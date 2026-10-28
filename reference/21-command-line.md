@@ -66,22 +66,26 @@ With `--json`, diagnostics go to stderr as one JSON document:
   "schemaVersion": 1,
   "diagnostics": [{
     "code": "E0701",
+    "severity": "error",
     "message": "condition must be bool",
     "file": "src/users.dat",
-    "span": { "byteStart": 312, "byteEnd": 316, "line": 14, "col": 7 },
+    "span": { "byteStart": 312, "byteEnd": 316,
+              "line": 14, "col": 7, "endLine": 14, "endCol": 11 },
+    "labels": [{ "message": "`user` is `User?`" }],
     "fixes": [{
       "title": "compare with null",
       "applicability": "safe",
-      "edits": [{ "byteStart": 312, "byteEnd": 316,
+      "isPreferred": true,
+      "edits": [{ "file": "src/users.dat", "byteStart": 312, "byteEnd": 316,
                   "before": "user", "after": "user != null" }]
     }],
     "rendered": "error[E0701]: condition must be bool\n…"
   }],
-  "summary": { "errors": 1, "fixable": 1 }
+  "summary": { "errors": 1, "warnings": 0, "fixable": 1 }
 }
 ```
 
-- `applicability` is `safe`, `review` or `option`. `dat fix` applies only `safe` fixes.
-- Each edit carries the exact `before` text, so a tool can detect stale offsets, and an agent can apply the edit as a plain string replacement.
-- `byteStart` and `byteEnd` are byte offsets into the file. `line` and `col` count from 1, and `col` counts characters.
+- `applicability` is `safe`, `review` or `option`. `dat fix` applies only `safe` fixes. When there are several options, `isPreferred` marks the one to show first.
+- Each edit names its file and carries the exact `before` text, so a tool can detect stale offsets, and an agent can apply the edit as a plain string replacement.
+- `byteStart` and `byteEnd` are byte offsets into the file. `line` and `col` count from 1, and columns count Unicode scalar values. `endLine` and `endCol` point just past the end of the span.
 - `rendered` is the terminal form of the same diagnostic.

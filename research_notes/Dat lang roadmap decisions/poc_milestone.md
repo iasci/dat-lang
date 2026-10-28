@@ -1,5 +1,7 @@
 # The first milestone as an end-to-end fibonacci proof of concept
 
+> **Status, 29 October 2026.** These notes predate the owner's answers to questions 1, 2, 5, 6, 11, 14, 32, 34, 35 and 37 in [the research report](../../reports/Dat%20lang%20roadmap%20decisions.md#questions-for-the-owner). Those answers are now in `reference/`, and they win wherever this note calls the questions open or proposes something else. In particular, the string-and-int error is `E0301`, `deep.dat` now recurses 9,000 deep and catches `StackOverflowError` by name, the `FAIL` sample in §20 is fixed, and the CLI reference is `reference/21-command-line.md`.
+
 Scope: how to design dat-lang's first milestone as a walking skeleton. One fibonacci program goes through every component: lexer, parser, checker, typed IR, interpreter, Rust codegen with rustc, the shared `dat-rt` crate, the differential conformance harness, diagnostics, the CLI and benchmarks. Researched 28 October 2026. Spec facts come from `reference/` as it stands today. Benchmark numbers marked "local measurement" were measured during this research on one machine (method in section 4). They are not published figures.
 
 Owner decisions received during the research, and applied throughout:

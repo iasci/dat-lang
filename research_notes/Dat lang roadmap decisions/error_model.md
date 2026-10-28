@@ -1,5 +1,7 @@
 # Error model: catchable runtime errors in the interpreter and in generated Rust
 
+> **Status, 29 October 2026.** These notes predate the owner's answers to questions 1 and 2 in [the research report](../../reports/Dat%20lang%20roadmap%20decisions.md#questions-for-the-owner). Those answers are now in `reference/`, and they win wherever this note calls the questions open or proposes something else. The owner approved the `StackOverflowError` row in §12 and a guarantee of at least 10,000 nested calls, with the exact limit implementation-defined above it.
+
 Scope: how dat can keep the AGENTS.md rule "every runtime error can be caught; never turn a failure into an uncatchable crash" in both run modes, and what each approach costs. Inputs: [AGENTS.md](../../AGENTS.md), [reference/12-errors.md](../../reference/12-errors.md) and the runtime-error mentions in §01, §02, §03, §04, §05, §09, §10, §16, §17 and §20, plus the draft roadmap (M0 spike "runtime errors as unwinding", M4 "Errors", open questions Q1 and Q2).
 
 **Owner answers received during this research (relayed by the coordinator, 2026-10-28):**

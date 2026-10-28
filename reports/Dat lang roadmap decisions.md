@@ -1,6 +1,6 @@
 # Sharpen dat's roadmap, starting with fibonacci
 
-**The draft roadmap's architecture holds up: one front end, a typed IR feeding both a tree-walking interpreter and a Rust code generator, one shared runtime crate, declared errors as `Result`, runtime errors as unwinding, and copy-on-write collections. About a dozen of its specifics are wrong, though, in ways that change a complexity class, abort the process or miss a budget, and its Hello World first milestone proves almost nothing.** The biggest fix is ordering. Last-use moves and owned-parameter inference must land in M2, not M8. Without them the spec's own recommended style (`acc = f(acc, x)`) runs **2,200× slower at 40k calls**, goes quadratic, and runs at a different complexity in the interpreter than in compiled code. Three Rust mappings need replacing. `Option<Box<T>>` for recursive fields **aborts the process on drop at 1M nodes, even inside `catch_unwind`**. `Rc<str>` makes `s += t` quadratic (**298 ms against 49 µs** for 40k appends). And lazily initialized `static` module constants can't hold `Rc` values at all. The owner made a catchable `StackOverflowError` conditional on it being cheap, and the condition is met: a stack-pointer check costs **0–4% on compiled `fib(35)`**, so the guard should go in once the §12 wording is approved. The interpreter path's millisecond budgets are reachable with an in-process test runner. The compiled path needs tiered budgets, because rustc's incremental floor alone is **0.27 s at 7k generated lines and 2.6 s at 110k**. M0 should become a fibonacci walking skeleton: a 68-line program, five companion programs and 17 exit criteria. Together they push a real, tiny version of every component through both run modes and show each AGENTS.md rule holding at small scale, using only constructs the spec already defines. The research leaves 39 open questions that touch the spec or project policy. Eleven are needed by M0, and this report settles none of them.
+**The draft roadmap's architecture holds up: one front end, a typed IR feeding both a tree-walking interpreter and a Rust code generator, one shared runtime crate, declared errors as `Result`, runtime errors as unwinding, and copy-on-write collections. About a dozen of its specifics are wrong, though, in ways that change a complexity class, abort the process or miss a budget, and its Hello World first milestone proves almost nothing.** The biggest fix is ordering. Last-use moves and owned-parameter inference must land in M2, not M8. Without them the spec's own recommended style (`acc = f(acc, x)`) runs **2,200× slower at 40k calls**, goes quadratic, and runs at a different complexity in the interpreter than in compiled code. Three Rust mappings need replacing. `Option<Box<T>>` for recursive fields **aborts the process on drop at 1M nodes, even inside `catch_unwind`**. `Rc<str>` makes `s += t` quadratic (**298 ms against 49 µs** for 40k appends). And lazily initialized `static` module constants can't hold `Rc` values at all. The owner made a catchable `StackOverflowError` conditional on it being cheap, and the condition is met: a stack-pointer check costs **0–4% on compiled `fib(35)`**, so the guard goes in at M0, and the owner has since approved the §12 wording. The interpreter path's millisecond budgets are reachable with an in-process test runner. The compiled path needs tiered budgets, because rustc's incremental floor alone is **0.27 s at 7k generated lines and 2.6 s at 110k**. M0 should become a fibonacci walking skeleton: a 68-line program, five companion programs and 17 exit criteria. Together they push a real, tiny version of every component through both run modes and show each AGENTS.md rule holding at small scale, using only constructs the spec already defines. The research raised 39 questions that touch the spec or project policy. This report settles none of them. The owner has since answered the eleven that M0 needs, and 28 remain open.
 
 ## Five owner decisions already narrow the design
 
@@ -8,11 +8,13 @@ The owner answered five questions while this research was under way, and this re
 
 | Settled decision | What it means in this report |
 |---|---|
-| Stack overflow becomes a catchable `StackOverflowError` if that can be done cheaply; otherwise crashing is acceptable. The §12 row is a spec addition whose wording still needs approval. | The cost was measured and is cheap: 0–4% on `fib(35)` with a stack-pointer check. The guard is recommended for M0. The row's text and the depth guarantee stay open (Q1, Q2). |
+| Stack overflow becomes a catchable `StackOverflowError` if that can be done cheaply; otherwise crashing is acceptable. The §12 row is a spec addition, which the owner approved later (Q1). | The cost was measured and is cheap: 0–4% on `fib(35)` with a stack-pointer check. The guard is recommended for M0. The owner later approved the row's text and a guarantee of at least 10,000 nested calls (Q1, Q2). |
 | Out of memory is the one uncatchable failure and aborts in both modes. | dat-rt installs one global-allocator wrapper, so both modes print the same message and exit the same way. Only the wording in §12 and AGENTS.md is open (Q3). |
 | The millisecond goals apply only to the interpreter path (`dat check`, `dat run`, `dat test`). Anything that goes through rustc has its own budget. | The interpreter is the default test runner. `--compiled` runs in CI and on request, against the tiered budgets proposed below. |
 | Compile-time type tags for interface values are accepted, and tricks that make things faster or cheaper are welcome. General reflection stays out. | Interfaces lower to closed-world enums with generated `__tag`/`__as_X` helpers instead of `Any`. Pure module constants are evaluated at compile time, and map-entry updates are rewritten to take-and-restore. |
 | The terminal diagnostic format is the one for people and agents; `--json` is for tools. | One compact text layout of about six lines per diagnostic, and a JSON schema built for `dat fix`, the LSP, CI and harnesses. The draft roadmap's diagnostics panel already uses these labels. |
+
+On 29 October 2026 the owner also answered the eleven questions M0 needs. They're marked as answered in [Questions for the owner](#questions-for-the-owner) and written into `reference/`.
 
 Every local measurement in this report comes from one Apple M4 Pro running macOS (Darwin 24.6) with rustc 1.99.0. Source code and raw output are in the research folder: the [fib and interpreter benchmarks][b-fib], the [codegen and tooling benchmarks][b-cg], the [cargo rebuild case][b-cargo], the [value-semantics micro-benchmarks][b-val], the [error-model micro-benchmarks][b-err] and the [diagnostic size script][b-diag]. No Linux or x86 numbers were taken. macOS is unusually slow for thread-local storage and unwinding, and the interpreter numbers come from a 100-line toy walker, not from a dat interpreter. Read the ratios as indicative and the absolute times as orders of magnitude. That is why the budgets below name reference machines and ask to be recalibrated on the CI runner.
 
@@ -69,7 +71,7 @@ The estimate is **15–60 ms per 1,000 small tests cold, and under 20 ms warm**.
 
 Keeping two backends equal takes more machinery than the roadmap lists. The known sources of divergence all apply to dat:
 
-- **Evaluation order.** For compound assignment on primitive types, Rust evaluates the right-hand side first, which its own Reference calls "unusual" ([Rust Reference](https://doc.rust-lang.org/reference/expressions/operator-expr.html)). So `xs[i()] += f()` would call `f` before `i` unless the shared IR fixes the evaluation order (Q14).
+- **Evaluation order.** For compound assignment on primitive types, Rust evaluates the right-hand side first, which its own Reference calls "unusual" ([Rust Reference](https://doc.rust-lang.org/reference/expressions/operator-expr.html)). So `xs[i()] += f()` would call `f` before `i` unless the shared IR fixes the evaluation order. The owner chose left to right (Q14).
 - **Integer edge cases.** `i64::MIN.checked_rem(-1)` returns `None`, although the mathematical answer is 0 (Q9).
 - **Float formatting.** Rust's `Display` for floats never switches to exponent notation, so dat's float formatter must live in dat-rt.
 - **Standard-library drift.** Rust 1.81 replaced the standard sorts with versions that "may panic" when the comparator isn't a total order ([Rust 1.81](https://blog.rust-lang.org/2024/09/05/Rust-1.81.0/)). The std built into the interpreter and the user's rustc can therefore disagree, unless the toolchain is pinned or sorting, case mapping and number parsing are implemented in dat-rt (Q17).
@@ -197,7 +199,7 @@ The recommended setup has three parts:
 
 On compiled `fib(35)`, the worst case for a per-call guard, the stack-pointer check cost **0–4%**. A depth counter in thread-local storage cost about 2×, and a global atomic counter about 3.3× ([fib benchmarks][b-fib]).
 
-The catch is determinism. A limit in bytes fires at different depths in a tree walker and in compiled code (a minimal compiled frame is about 32 bytes), which is why the interpreter notes argued for a deterministic depth counter. The way to reconcile the two is one spec sentence: guarantee a minimum depth, for example at least 10,000 nested calls, and leave the exact overflow depth implementation-defined above it. That keeps one cheap check per call. If the owner wants identical depths in both modes, the affordable deterministic form is a hidden depth argument (+0.05 to +0.22 ns per call), with the stack-pointer check kept as a backstop (Q2). Other languages split on this: the JVM and JavaScript engines make stack exhaustion catchable, while .NET and Go treat it as fatal.
+The catch is determinism. A limit in bytes fires at different depths in a tree walker and in compiled code (a minimal compiled frame is about 32 bytes), which is why the interpreter notes argued for a deterministic depth counter. The way to reconcile the two is one spec sentence: guarantee a minimum depth, for example at least 10,000 nested calls, and leave the exact overflow depth implementation-defined above it. That keeps one cheap check per call. If the owner wants identical depths in both modes, the affordable deterministic form is a hidden depth argument (+0.05 to +0.22 ns per call), with the stack-pointer check kept as a backstop. The owner chose the guaranteed minimum, 10,000 nested calls (Q2). Other languages split on this: the JVM and JavaScript engines make stack exhaustion catchable, while .NET and Go treat it as fatal.
 
 The bigger hole is not recursion in dat code but recursion in Rust code that dat never sees. Dropping a 1M-node `Option<Box<Node>>` chain, the roadmap's mapping for nullable self-references, overflowed an 8 MiB stack and **aborted the process even inside `catch_unwind`**. The derived `Clone` aborted at 200k nodes ([value-semantics benchmarks][b-val], [error-model benchmarks][b-err]). No guard on dat functions sees this. It also fires during ordinary unwinding, when unwound frames drop their values. The compiler must therefore generate an iterative `Drop` for every type that can contain itself, including through `list` and `map`, and dat-rt's clone, equality, hashing, comparison and `toString` must be iterative or check the stack. This belongs in M3, together with recursive structs, and in the M4 torture suite, whatever is decided about the stack-overflow row.
 
@@ -284,7 +286,7 @@ On format, the owner's decision matches the indirect evidence:
 The recommended layout:
 
 - **Each diagnostic is about six lines:** a header with the code, the location, the source line with a caret and a short label, a `fix:` title, and the full corrected line.
-- **Uncertain or multiple fixes** are marked `fix (review):` or listed as numbered `options:`.
+- **Uncertain or multiple fixes** are marked `fix (review):` or listed as `option:` lines.
 - **No decorative gutter lines**, and colors only on a TTY.
 - **Diagnostics are sorted** by file, position and code, and capped at 50 with "and N more".
 - **The output ends with a summary** such as `2 errors, 1 fixable with dat fix`.
@@ -298,9 +300,9 @@ The JSON record is cheap to get right at M0 and expensive to change once `dat fi
 - **Edits.** Each edit has a file, a byte range and the exact `before` text. That lets tools detect stale offsets and lets agents use `str_replace`.
 - **One document per run**, with `schemaVersion`, `diagnostics[]`, a `summary`, and each diagnostic's `rendered` text.
 
-Applicability should have three levels, `safe`, `review` and `options`, following rustc, Ruff, ESLint and Clang, and `dat fix` applies only `safe` fixes. Clang's rule that the compiler "must recover from errors as if the fix-it had been applied" ([Clang](https://clang.llvm.org/docs/InternalsManual.html)) gives two things: it suppresses follow-on errors, and it gives a testable property. Apply every safe fix, and the root cause disappears without new errors. Error codes should be stable, never reused, and grouped by spec section, with `dat explain` generated from the text in `reference/`. Error recovery follows the standard recipe: a resilient parser that wraps bad input in error nodes, an error type that absorbs further checks, and "tainting" to suppress follow-on errors. The goal is one diagnostic per root cause, and the conformance suite checks that on every ❌ case in scope.
+Applicability should have three levels, `safe`, `review` and `option`, following rustc, Ruff, ESLint and Clang, and `dat fix` applies only `safe` fixes. Clang's rule that the compiler "must recover from errors as if the fix-it had been applied" ([Clang](https://clang.llvm.org/docs/InternalsManual.html)) gives two things: it suppresses follow-on errors, and it gives a testable property. Apply every safe fix, and the root cause disappears without new errors. Error codes should be stable, never reused, and grouped by spec section, with `dat explain` generated from the text in `reference/`. Error recovery follows the standard recipe: a resilient parser that wraps bad input in error nodes, an error type that absorbs further checks, and "tainting" to suppress follow-on errors. The goal is one diagnostic per root cause, and the conformance suite checks that on every ❌ case in scope.
 
-`dat test` should check the whole project first and print compile diagnostics before test results. Its exit codes should follow Ruff ([Ruff](https://docs.astral.sh/ruff/linter/#exit-codes)): 0 for success, 1 for compile errors or failing tests, 2 for tool errors. Whether tests in healthy modules still run when another module fails to check is a spec question (Q31).
+`dat test` should check the whole project first and print compile diagnostics before test results. The owner set its exit codes (Q32): 0 for success, 1 for failing tests, and 2 when the tests couldn't run, which covers compile errors, unknown options and a `--filter` that matches nothing. Ruff's scheme ([Ruff](https://docs.astral.sh/ruff/linter/#exit-codes)), which this report first proposed, would have counted compile errors as 1. Whether tests in healthy modules still run when another module fails to check is a spec question (Q31).
 
 Teaching dat to agents should rely on the compiler more than on documents. Repository context files raised agent cost by more than 20% with no gain in success ([AGENTS.md study](https://arxiv.org/pdf/2602.11988)). In unfamiliar languages, distilled text guidance didn't help weaker agents, while working helper code did ([esolang study](https://arxiv.org/abs/2606.10933)). The spec is about 95 KB, roughly 20–25k tokens. A better package has two parts:
 
@@ -370,10 +372,10 @@ Measured against the evidence, the draft roadmap gets its architecture right and
 A few other details are outdated:
 
 - **Syntax tree.** "Lossless syntax tree" should become an arena AST plus a lossless token and trivia vector; the formatter and fixes need lossless tokens, not a red-green tree.
-- **Fix text in the spec.** "The 37 ❌ lines become expected diagnostics" understates the work. Only three of the 37 state a fix, and two have no message at all, so fix text has to be written in the compiler, or added to the spec with the owner's approval.
+- **Fix text in the spec.** "The 37 ❌ lines become expected diagnostics" understates the work. Only three of the 37 state a fix, and two have no message at all, so fix text has to be written in the compiler, or added to the spec with the owner's approval. The owner approved adding it (Q37), and all 37 lines now carry a code and a fix.
 - **Panic hook.** The "silent panic hook" becomes `resume_unwind`, which skips the hook entirely.
 - **Open questions.** The roadmap's Q1–Q3 are now answered by the owner.
-- **Spec error.** The `FAIL math.dat:9` sample in [20-testing][spec-20] points at the wrong line and shows an assertion that can't fail.
+- **Spec error.** The `FAIL math.dat:9` sample in [20-testing][spec-20] points at the wrong line and shows an assertion that can't fail. The owner approved the fix (Q34), and the sample now points at `math.dat:8`.
 
 ## M0 redefined: fibonacci through every component in both modes
 
@@ -470,7 +472,7 @@ The program is written to avoid every behaviour the spec leaves open:
 
 - `catch (e: RangeError)` is legal. The rule that makes "a `catch` clause for a declared error type that nothing in the block can throw" a compile error covers only declared types, and `RangeError` is a runtime type ([12-errors][spec-12]).
 - The tests bind results with `const f = …` instead of writing `fibIter(93);` alone, because the spec doesn't say whether a non-`void` result may be discarded (Q16).
-- The overflow test checks only that the message isn't empty, because the spec doesn't define the overflow message (Q5).
+- The overflow test checks only that the message isn't empty. §12 now defines the text (Q5), and the `overflow_uncaught.dat` golden checks it byte for byte.
 
 ### Five companion programs
 
@@ -490,10 +492,10 @@ function main(): void {
 }
 ```
 
-This is the terminal rendering in the compact layout recommended above. It is the form people and agents read; the error code is a placeholder.
+This is the terminal rendering in the compact layout recommended above. It is the form people and agents read; `E0301` is the code §03 gives this error.
 
 ```
-error[E0101]: can't add string and int
+error[E0301]: can't add string and int
   --> bad_fib.dat:10:9
 10 |   print("fib(10) = " + fib(10));
    |         ^^^^^^^^^^^^^^^^^^^^^^ `fib(10)` is an int
@@ -507,7 +509,7 @@ This is the `--json` rendering for `dat fix`, the LSP and the harness, in the re
 ```json
 { "schemaVersion": 1,
   "diagnostics": [{
-    "code": "E0101", "severity": "error", "message": "can't add string and int",
+    "code": "E0301", "severity": "error", "message": "can't add string and int",
     "file": "bad_fib.dat",
     "span": { "byteStart": 145, "byteEnd": 167, "line": 10, "col": 9, "endLine": 10, "endCol": 31 },
     "labels": [{ "message": "`fib(10)` is an int" }],
@@ -515,7 +517,7 @@ This is the `--json` rendering for `dat fix`, the LSP and the harness, in the re
                 "edits": [{ "file": "bad_fib.dat", "byteStart": 145, "byteEnd": 167,
                             "before": "\"fib(10) = \" + fib(10)",
                             "after": "`fib(10) = ${fib(10)}`" }] }],
-    "rendered": "error[E0101]: can't add string and int\n  --> bad_fib.dat:10:9\n..." }],
+    "rendered": "error[E0301]: can't add string and int\n  --> bad_fib.dat:10:9\n..." }],
   "summary": { "errors": 1, "warnings": 0, "fixable": 1 } }
 ```
 
@@ -544,7 +546,7 @@ function main(): void {
 }
 ```
 
-The proposed stderr is below. Its message text and layout are provisional until Q5 and Q6 are answered. The operands at the overflow are F(91) and F(92).
+Its stderr follows §12 (Q5, Q6). The operands at the overflow are F(91) and F(92).
 
 ```
 RangeError: int overflow: 4660046610375530309 + 7540113804746346429
@@ -567,16 +569,18 @@ test "deliberately wrong" {
 }
 ```
 
-Expected output in both modes, with a non-zero exit status:
+Expected stdout in both modes, with exit status 1. The harness normalizes the time in the summary line:
 
 ```
 FAIL fib_fail.dat:9  deliberately wrong
   assert(fib(10) == 56)
     left:  55
     right: 56
+
+1 failed, 0 passed (2 ms)
 ```
 
-**`examples/fib/deep.dat`** is the stack-guard case. It uses `catch (e)`, which is legal today whatever the new error type ends up being called:
+**`examples/fib/deep.dat`** is the stack-guard case. It stays inside the guaranteed 10,000 nested calls, then catches the `StackOverflowError` that §12 now defines:
 
 ```
 function depth(n: int): int {
@@ -587,17 +591,17 @@ function depth(n: int): int {
 }
 
 function main(): void {
-  print(depth(10_000));
+  print(depth(9_000));
   try {
     print(depth(100_000_000));
     print("not reached");
-  } catch (e) {
+  } catch (e: StackOverflowError) {
     print("deep recursion caught");
   }
 }
 ```
 
-With a guard, both modes print `10000` and then `deep recursion caught`, and exit with status 0. Without one, the compiled binary aborts with status 134. A tree-walking interpreter would overflow the host stack at a far smaller dat depth than compiled code, so the interpreter needs its own check and a large dedicated thread stack.
+With a guard, both modes print `9000` and then `deep recursion caught`, and exit with status 0. Without one, the compiled binary aborts with status 134. A tree-walking interpreter would overflow the host stack at a far smaller dat depth than compiled code, so the interpreter needs its own check and a large dedicated thread stack.
 
 **`bench/fib35.dat`** is `function main(): void { print(fib(35)); }` with the same `fib`. It is paired with **`bench/fib35.rs`**, the hand-written baseline: the same algorithm, built with `overflow-checks=on`. A trivial `hello.dat` serves only the startup budget.
 
@@ -631,7 +635,7 @@ On the compiled path for a program this small, rustc on the single file took 78�
 
 | # | Component | Criterion | How measured | Pass threshold |
 |---|---|---|---|---|
-| 1 | Lexer and parser (`dat-syntax`) | Parses all PoC programs and every spec block in the subset, with byte spans on every node. A syntax error reports `file:line:col` and never panics | Unit tests; parsing all 158 blocks never panics (blocks outside the subset report "unsupported") | 0 panics; every subset block parses |
+| 1 | Lexer and parser (`dat-syntax`) | Parses all PoC programs and every spec block in the subset, with byte spans on every node. A syntax error reports `file:line:col` and never panics | Unit tests; parsing all 167 blocks never panics (blocks outside the subset report "unsupported") | 0 panics; every subset block parses |
 | 2 | Checker (`dat-check`) | `fib.dat` is clean. `bad_fib.dat` reports exactly one error, with the spec message "can't add string and int", at 10:9–10:31. The subset's ❌ lines in `03-operators` (`++` forms) and `14-scope` are reproduced with their spec text. The `06-functions` "missing return" case may be `xfail` | Golden diagnostics; a matcher for spec lines | 100% of in-subset ❌ lines matched, apart from listed `xfail`s; 0 extra diagnostics |
 | 3 | Diagnostics | The terminal form (primary) and the `--json` form are golden-tested. The JSON fix applies mechanically, and the fixed file checks clean and runs | `.diag`, `.diag.json` and `.fixed` goldens | Byte-identical goldens; the fixed program prints `fib(10) = 55` in both modes |
 | 4 | Typed IR (`dat-ir`) | Both backends consume only the IR. A `dat ir fib.dat` text dump is snapshot-tested | The crate graph forbids `dat-interp` or `dat-codegen` depending on `dat-syntax` or `dat-check`, checked in CI with `cargo metadata`; snapshot test | No forbidden edges; snapshot stable |
@@ -640,9 +644,9 @@ On the compiled path for a program this small, rustc on the single file took 78�
 | 7 | Runtime (`dat-rt`) | The overflow check, the `RangeError` message, `toString`, `print`, `assert`'s left/right rendering and the uncaught-error printer exist once, in dat-rt, and both modes call them | Code-review rule, plus a test that the overflow message is byte-identical in both modes | Identical bytes |
 | 8 | Error model | Overflow and the user-thrown `RangeError` are catchable in both modes. An uncaught error exits with status 1 and a trace with only dat frames, no Rust frames | `fib.dat` tests; `overflow_uncaught.dat` golden | Identical exit statuses and stderr |
 | 9 | Stack guard | `deep.dat` catches the deep recursion in both modes; otherwise the guard's cost is recorded and a crash is accepted | `bench/fib35` with and without the guard | Adopt if the guard costs ≤ 5% on compiled `fib(35)` (measured 0–4% locally) |
-| 10 | `dat test` | `fib.dat`: 4 passed, 0 failed, with identical per-test results in both modes. `fib_fail.dat` prints the spec's `FAIL` block in both modes and exits non-zero | Conformance runner | Identical result lists |
+| 10 | `dat test` | `fib.dat`: 4 passed, 0 failed, with identical per-test results in both modes. `fib_fail.dat` prints the spec's `FAIL` block in both modes and exits 1 | Conformance runner | Identical result lists |
 | 11 | Differential harness (`dat-conformance`) | Compares stdout, normalized stderr, exit status, the uncaught error's type and message, and the per-test result list. Detects an injected fault | Self-test with `DAT_FAULT=interp-plus-one`, which makes the interpreter compute `+` wrong | The harness reports the difference; otherwise CI fails |
-| 12 | Spec extraction | Extracts all 158 blocks and classifies every annotation as checked, unsupported or doc-only, with counts. Subset cases pass in both modes | Runner summary | 158/158 classified; ≥ 10 subset cases passing; the `pass` count becomes a ratchet that can only grow |
+| 12 | Spec extraction | Extracts all 167 blocks and classifies every annotation as checked, unsupported or doc-only, with counts. Subset cases pass in both modes | Runner summary | 167/167 classified; ≥ 10 subset cases passing; the `pass` count becomes a ratchet that can only grow |
 | 13 | Interpreter-path latency | `dat check fib.dat` ≤ 10 ms; `dat test fib.dat` (4 tests, interpreted) ≤ 20 ms; `dat run hello.dat` ≤ 5 ms; all wall time including process start | `hyperfine -N --warmup 3 --runs 20` in CI | Median under budget; CI hard-fails at 2× |
 | 14 | Compiled-path budget (separate) | Warm `dat run --compiled fib.dat` with dat-rt prebuilt ≤ 1 s; warm `dat test --compiled fib.dat` ≤ 2 s; cold builds only recorded | hyperfine | Under budget |
 | 15 | Compiled speed | `bench/fib35` generated against hand-written, same profile, `overflow-checks=on` | `hyperfine -N`, 20 runs, same CI job | ≤ 1.2× (the unwinding design measured about 1.0×) |
@@ -661,7 +665,7 @@ Ratio gates are used instead of absolute times because shared CI runners are noi
 | Two run modes with the same semantics; every test in both | Both backends read only the IR; every observable built-in exists once in dat-rt; per-test results are identical; the harness catches an injected fault; the interpreter is fast enough to be the default | 4, 5, 6, 7, 10, 11, 16 |
 | Rust compatibility: no GC, no `Rc<RefCell>`, no inheritance, no reflection | The generated crate builds warning-free under `#![forbid(unsafe_code)]`, with no `RefCell` and no reflection | 6 |
 | Error tolerance: every runtime error can be caught | Overflow and user-thrown errors are caught in both modes; an uncaught error exits 1 with a dat-only trace; deep recursion is caught, or the cost of catching it is recorded | 8, 9 |
-| `reference/` is the spec; don't replace designed features without asking | All 158 blocks are extracted and classified, and subset blocks pass in both modes. Every unspecified behaviour becomes an owner question, and the program avoids it | 12 |
+| `reference/` is the spec; don't replace designed features without asking | All 167 blocks are extracted and classified, and subset blocks pass in both modes. Every unspecified behaviour becomes an owner question, and the program avoids it | 12 |
 
 ### Real versus stubbed, and the CI that enforces it
 
@@ -676,7 +680,7 @@ Under the walking-skeleton principle, every box is real but tiny. Stubs are acce
 | `dat-codegen` | Emits Rust from the same IR; `#![forbid(unsafe_code)]`; drives Cargo; one crate for all tests | Release-profile tuning, LTO |
 | `dat-rt` | Checked arithmetic, error structs, the `resume_unwind` throw and catch helpers, `print` and `toString` for int, bool and string, `assert` rendering, the uncaught-error reporter, the test harness, the stack guard | Collections, float formatting, strings beyond concatenation and templates |
 | Diagnostics | One record in the recommended schema; terminal renderer (primary); `--json` | `dat fix`, `dat explain`, LSP |
-| `dat-conformance` | Extractor for all 158 blocks, classifier, preludes in a sidecar file, example goldens, mode diff, fault-injection self-test, ratchet file | Program generator, test-case reducer |
+| `dat-conformance` | Extractor for all 167 blocks, classifier, preludes in a sidecar file, example goldens, mode diff, fault-injection self-test, ratchet file | Program generator, test-case reducer |
 | Benchmarks | hyperfine scripts with startup measured separately, the hand-written Rust baseline, CPython and Lua reference runs, ratio gates | Instruction-count job (Gungraun), which can follow soon |
 
 Spec-as-tests needs no spec edits for the PoC. The extractor treats the reference's existing comments as the annotation language:
@@ -686,7 +690,7 @@ Spec-as-tests needs no spec edits for the PoC. The extractor treats the referenc
 - `print(...); // <text>` is expected stdout.
 - `<expr> // <literal>` becomes an `assert`.
 
-The work is real, because the 158 blocks were written for readers. 88 are fragments of function bodies, the 37 ❌ lines sit in 26 blocks, 8 blocks redeclare names to show alternatives, and 8 use `{ ... }` placeholder bodies. So the runner splits blocks into one variant per ❌ line, keeps hidden setup ("preludes") in a sidecar file keyed by a hash of each block, and reports `pass`, `fail`, `unsupported`, `doc-only` or `xfail` for each case. This follows the precedent of Astral's mdtest ([ty_test README](https://github.com/astral-sh/ruff/blob/main/crates/ty_test/README.md)). Fence tags and invisible directives in `reference/` are left as an owner question (Q39).
+The work is real, because the blocks were written for readers. Of the 158 blocks at the time of this report (the M0 answers later added 9, for 167, and one more ❌ line: the README's example of the format), 88 are fragments of function bodies, the 37 ❌ lines sit in 26 blocks, 8 blocks redeclare names to show alternatives, and 8 use `{ ... }` placeholder bodies. So the runner splits blocks into one variant per ❌ line, keeps hidden setup ("preludes") in a sidecar file keyed by a hash of each block, and reports `pass`, `fail`, `unsupported`, `doc-only` or `xfail` for each case. This follows the precedent of Astral's mdtest ([ty_test README](https://github.com/astral-sh/ruff/blob/main/crates/ty_test/README.md)). Fence tags and invisible directives in `reference/` are left as an owner question (Q39).
 
 CI runs a Linux and macOS matrix with the toolchain pinned in `rust-toolchain.toml` and `Swatinem/rust-cache`. The steps are `cargo build`, `cargo test`, and the conformance runner in both modes. When a run fails, the generated `.rs` files and diffs are uploaded as artifacts. A separate perf job on Linux runs the hyperfine budgets and ratios, hard-fails only beyond 2× a budget, and posts its numbers as a job summary.
 
@@ -697,7 +701,7 @@ Status values: **Settled** means the owner decided it. **Adopt** means it is rec
 | # | Decision | Recommendation | Key evidence | Needed by | Status |
 |---|---|---|---|---|---|
 | 1 | First milestone | A fib walking skeleton replaces Hello World; the copy-on-write spike stays throwaway | Ghuloum; Hello World exercises no calls, arithmetic or errors | M0 | Adopt |
-| 2 | Spec-as-tests | Infer expectations from existing comments, use sidecar preludes and per-line splitting, and keep a status ratchet | 158 blocks: 88 fragments; 37 ❌ lines in 26 blocks | M0 | Adopt (Q39) |
+| 2 | Spec-as-tests | Infer expectations from existing comments, use sidecar preludes and per-line splitting, and keep a status ratchet | 158 blocks before the M0 answers: 88 fragments; 37 ❌ lines in 26 blocks | M0 | Adopt (Q39) |
 | 3 | Differential harness | Compare outcomes plus goldens; fault-injection self-test; program generator by M4 | Csmith: 325+ bugs | M0, M4 | Adopt |
 | 4 | Benchmark gates | Ratios measured in the same job: compiled ≤ 1.2× checked hand-written Rust, interpreter ≤ 2× CPython; ms budgets on the interpreter path only | about 1.0× and 1.7× measured | M0 | Adopt |
 | 5 | Incremental granularity | Per-module interface hash plus per-body cache with backdating; hand-rolled behind a query-shaped API | ty 4.7 ms, Pyright 386 ms, Pyrefly 2.38 s; salsa port about 250 MB over | M1 model, M6 cache | Adopt |
@@ -711,9 +715,9 @@ Status values: **Settled** means the owner decided it. **Adopt** means it is rec
 | 13 | Interpreter strategy | Walk a typed IR with resolved slots and explicit evaluation order; upgrade only if a gate fails | 101 ms against 322 ms on `fib(30)` | M0 | Adopt |
 | 14 | Interpreter values and runtime sharing | 16-byte tagged `Value`; generic dat-rt; `#[inline]` primitive ops returning `Result`; no trait objects | dart2wasm divergence through separate implementations | M0–M2 | Adopt |
 | 15 | Interpreter propagation | `Result<Value, Unwind>` carrying Throw, Return, Break and Continue | about 11 ns per frame, against microseconds per throw | M0 | Adopt |
-| 16 | Test runner | In-process pool; fresh state per test; cooperative timeouts; per-test output capture | ≥ 0.5 ms per spawn means ≥ 500 ms per 1,000 tests | M1 sequential, M6 parallel | Adopt (Q12, Q32) |
+| 16 | Test runner | In-process pool; fresh state per test; cooperative timeouts; per-test output capture | ≥ 0.5 ms per spawn means ≥ 500 ms per 1,000 tests | M1 sequential, M6 parallel | Adopt (Q12; Q32 answered) |
 | 17 | Test caching and selection | Exact cache keyed by transitive IR hash (M6); function-level selection (M7) | dat has no I/O yet | M6, M7 | Adopt (Q30) |
-| 18 | Equivalence machinery | Order-explicit IR, primitive ops only in dat-rt, pinned toolchain, per-test diff | Rust evaluates compound-assignment RHS first; sorts changed in 1.81 | M0–M2 | Adopt (Q14, Q17) |
+| 18 | Equivalence machinery | Order-explicit IR, primitive ops only in dat-rt, pinned toolchain, per-test diff | Rust evaluates compound-assignment RHS first; sorts changed in 1.81 | M0–M2 | Adopt (Q14 answered; Q17) |
 | 19 | JIT and dispatch tricks | None; revisit `become` after it stabilizes | 1–5% dispatch gains; dat-rt generics can't be JIT-instantiated | after M8 | Adopt |
 | 20 | Compiled budget | Tiered: ≤ 1 s up to 40k lines, ≤ 3 s up to 150k with the split, clean ≤ 5 s, release ≤ 30 s | 0.27 / 0.89 / 2.62 s | M0 measure, M6 enforce | Settled (separate budget); numbers Adopt |
 | 21 | Crate layout | One crate until about 40k generated lines; then SCC groups over a types crate, named by content hash | star leaf edit 0.51 s; chain bottom edit 3.11 s; Feldera 1,618→150 s | M6 | Measure |
@@ -728,7 +732,7 @@ Status values: **Settled** means the owner decided it. **Adopt** means it is rec
 | 30 | Locations and traces | `&'static Loc` per checked op; line map; rustc JSON reported as internal errors; traces captured at the throw unless identical traces are required | Rust has no `#line`; capture costs 3.7 µs | M0, M4 | Adopt (Q7) |
 | 31 | Error propagation | Hybrid: declared errors as `Result`, runtime errors unwind | 0 ns when nothing is thrown; `fib(35)` 1.0× against 1.6× | M0 | Adopt (moves from M4) |
 | 32 | Throw primitive and `finally` | `resume_unwind(Box<DatError>)`; hook only for Rust panics; `finally` after `catch_unwind` with a `Flow` value | skips the hook, 0.6–0.7 µs cheaper; a panic in `Drop` aborts | M0, M4 | Adopt (Q4) |
-| 33 | Stack overflow | Stack-pointer check against a static limit in recursive SCCs; large-stack threads; 256 KiB red zone; interpreter check | +0.02 to +0.17 ns per call; 0–4% on `fib(35)` | M0 | Settled policy, condition met; wording Q1, depth Q2 |
+| 33 | Stack overflow | Stack-pointer check against a static limit in recursive SCCs; large-stack threads; 256 KiB red zone; interpreter check | +0.02 to +0.17 ns per call; 0–4% on `fib(35)` | M0 | Settled; wording (Q1) and depth (Q2) answered |
 | 34 | Deep recursive values | Generated iterative `Drop`; iterative or stack-checked clone, eq, hash and `toString` | 1M-node drop aborts inside `catch_unwind` | M3 | Adopt |
 | 35 | Out of memory | Global-allocator wrapper in dat-rt that prints a dat message and aborts; `try_reserve` for capacity overflow | `-Zoom=panic` removed in Dec 2025 | M2 | Settled; wording Q3 |
 | 36 | Integer overflow checks | Explicit `checked_*` with a cold throw; M8 range analysis, hoisting, deferred checks; report vectorizable kernels separately | +132–249% on vectorizable kernels; SPEC +8.7–11.8% | M0, M8 | Adopt (Q9) |
@@ -742,34 +746,34 @@ Status values: **Settled** means the owner decided it. **Adopt** means it is rec
 | 44 | Copy visibility | Copy counter (`--report-copies`); complexity-ratio conformance cases; ring-buffer decision for `shift` | Lean's `dbgTraceIfShared`; 14.3× against 4.9× growth for 5× more items | M2, M8 | Adopt (Q26) |
 | 45 | Output format | Compact text, about six lines per diagnostic plus a summary; `--json` with `rendered` for tools | JSON about 1.9× the tokens | M0 | Settled; layout Adopt |
 | 46 | Record schema | Byte spans plus 1-based scalar-value columns; `fixes[]` with applicability; edits with `before`; `schemaVersion` | rustc JSON; LSP UTF-8 negotiation | M0 | Adopt |
-| 47 | Fix levels | `safe`, `review`, `options`; `dat fix` applies `safe`; recover-as-if-fixed property tested | rustc, Ruff, ESLint, Clang | M0 | Adopt (Q36) |
-| 48 | Codes and `dat explain` | Stable category codes; `dat explain` generated from `reference/` | rustc `--explain` | M0 scheme, M7 freeze | Adopt (Q37) |
+| 47 | Fix levels | `safe`, `review`, `option`; `dat fix` applies `safe`; recover-as-if-fixed property tested | rustc, Ruff, ESLint, Clang | M0 | Settled (Q36 answered) |
+| 48 | Codes and `dat explain` | Stable category codes; `dat explain` generated from `reference/` | rustc `--explain` | M0 scheme, M7 freeze | Settled (Q37 answered): codes numbered by spec section |
 | 49 | Error recovery | One diagnostic per root cause; cap of 50; deterministic order | pylint feedback 49.2% against 53.1% generic | M1–M6 | Adopt |
-| 50 | `dat test` behaviour | Checks first; exit codes 0/1/2 | `go test` runs vet; Ruff exit codes | M1 | Adopt (Q31, Q32) |
+| 50 | `dat test` behaviour | Checks first; exit codes 0/1/2 | `go test` runs vet; Ruff exit codes | M1 | Adopt (Q31 open; Q32 answered) |
 | 51 | Teaching agents | Compact TypeScript-difference sheet plus TypeScript-habit diagnostics | context files +20% cost, no gain | M1–M3 | Adopt (Q38) |
 | 52 | Agent benchmark | Pilot of about 20 tasks at M1–M2; full suite at M7 | no study isolates fix lines | M1–M2 | Adopt |
 | 53 | LSP | CLI first; LSP as a thin adapter at M7 | agents loop through the CLI | M7 | Adopt |
 
 ## Questions for the owner
 
-These 39 questions are collected from all seven notes and deduplicated. Each would add to, change or clarify `reference/` or AGENTS.md, or set project policy, so none is treated as decided here. "Raised in" names the notes: tooling, interpreter, codegen, errors, values, diagnostics, PoC. "Until answered" says what the implementation does in the meantime, without settling anything in the spec.
+These 39 questions are collected from all seven notes and deduplicated. Each would add to, change or clarify `reference/` or AGENTS.md, or set project policy. On 29 October 2026 the owner answered the eleven that M0 needs (1, 2, 5, 6, 11, 14, 32, 34, 35, 36 and 37), and the answers are now in `reference/`. The other 28 remain open, and none of them is treated as decided here. "Raised in" names the notes: tooling, interpreter, codegen, errors, values, diagnostics, PoC. The last column gives the owner's answer, or says what the implementation does in the meantime without settling anything in the spec.
 
-| # | Question | Raised in | Needed by | Until answered |
+| # | Question | Raised in | Needed by | Answer, or until answered |
 |---|---|---|---|---|
-| 1 | Approve the §12 row: `StackOverflowError`, kind Runtime, thrown by "a call nests deeper than the stack allows", plus a sentence that `try?` doesn't cover it | errors, interpreter, PoC | M0 goldens; M4 spec | `deep.dat` uses `catch (e)`, which is legal under any name |
-| 2 | Stack-overflow depth: implementation-defined above a guaranteed minimum (for example ≥ 10,000 nested calls), a fixed limit identical in both modes, or configurable? | interpreter, errors, PoC | M0, M4 | PoC checks only that depth 10,000 succeeds and 10⁸ is caught |
+| 1 | Approve the §12 row: `StackOverflowError`, kind Runtime, thrown by "a call nests deeper than the stack allows", plus a sentence that `try?` doesn't cover it | errors, interpreter, PoC | M0 goldens; M4 spec | **Answered:** approved as proposed (§12) |
+| 2 | Stack-overflow depth: implementation-defined above a guaranteed minimum (for example ≥ 10,000 nested calls), a fixed limit identical in both modes, or configurable? | interpreter, errors, PoC | M0, M4 | **Answered:** at least 10,000 nested calls in both modes; above that the limit is implementation-defined (§12) |
 | 3 | Wording for out of memory in §12 ("prints `fatal: out of memory`, aborts, Unix status 134"), and an AGENTS.md note listing the remaining uncatchable failures (OOM, OS SIGKILL, oversized native frames, abort-only targets, later FFI) | errors | M4 | behaviour implemented; only the wording waits |
 | 4 | What does a genuine Rust panic (a dat-rt bug, or a "capacity overflow" not routed to the abort) become: `AssertionError` with "internal error:", or a new internal-error type? | errors, interpreter | M1 | reported as an internal error, exit status 2 |
-| 5 | Text of the `int` overflow `RangeError` message (proposed: `int overflow: <a> <op> <b>`) | PoC | M0 | golden marked provisional; tests check only that the message isn't empty |
-| 6 | Streams and layout: `print` to stdout; uncaught errors to stderr with message, location and a dat-only trace; exit status 1 | PoC | M0 | proposed layout used, marked provisional |
+| 5 | Text of the `int` overflow `RangeError` message (proposed: `int overflow: <a> <op> <b>`) | PoC | M0 | **Answered:** as proposed, with dat's own operators; `int % 0` gives `int remainder by zero: <a> % 0` (§12) |
+| 6 | Streams and layout: `print` to stdout; uncaught errors to stderr with message, location and a dat-only trace; exit status 1 | PoC | M0 | **Answered:** as proposed, with stdout flushed before the error (§09, §12). Whether traces must match in release builds stays open (Q7) |
 | 7 | Must uncaught-error stack traces be identical between the interpreter and compiled release builds (which needs a shadow stack, +0.80–0.88 ns per call), or only type, message and location? | codegen, errors | M4 | traces compared only in test builds |
 | 8 | State after a callback throws inside a built-in (`sort`, `map`): all-or-nothing, same elements in unspecified order, or the exact algorithm? What does an inconsistent comparator throw, and is the order of comparator calls observable? | interpreter, errors | M2 | one shared dat-rt algorithm; conformance cases avoid the question |
 | 9 | Is `int.MIN % -1` equal to `0` or a `RangeError`? | interpreter, errors | M1 | dat-rt throws `RangeError`, flagged |
 | 10 | Does `try?` apply to arithmetic (`try? a + b`) or to calls of functions that don't throw? | PoC | M1 | rejected as "not supported yet" |
-| 11 | `catch (e: Error)` around a block that can throw only runtime errors seems to break the rule "a catch for a declared type nothing can throw is a compile error", since `Error` is listed as Declared. Which wins? | PoC | M0, M4 | PoC uses `catch (e)` |
+| 11 | `catch (e: Error)` around a block that can throw only runtime errors seems to break the rule "a catch for a declared type nothing can throw is a compile error", since `Error` is listed as Declared. Which wins? | PoC | M0, M4 | **Answered:** the catch-all wins; the check covers specific declared types only (§12) |
 | 12 | Confirm that a test timeout is an action of the test runner, not a catchable runtime error | interpreter | M6 | — |
 | 13 | Policy: are wasm or other targets without unwinding in scope? | errors | after M8 | no wasm target |
-| 14 | Are operands, call arguments, and the target and value of a compound assignment evaluated left to right? | interpreter, PoC | M0 | IR evaluates left to right |
+| 14 | Are operands, call arguments, and the target and value of a compound assignment evaluated left to right? | interpreter, PoC | M0 | **Answered:** left to right, with a compound assignment's target evaluated before its value (§03) |
 | 15 | Are out-of-range integer literals (`9223372036854775808`) valid, and is `-9223372036854775808`? | PoC | M1 | compile error "not supported yet" |
 | 16 | May an expression statement discard a non-`void` result? May `_` name a catch variable? | PoC | M1 | PoC binds results with `const` |
 | 17 | Confirm that observable algorithms (sort, case mapping, Unicode tables, number parsing) follow the dat version, not the user's rustc | interpreter | M1 | toolchain pinned in generated crates |
@@ -787,12 +791,12 @@ These 39 questions are collected from all seven notes and deduplicated. Each wou
 | 29 | Later: when concurrency arrives, are values sent to another task shared or deep-copied? Must a networking standard library use a DoS-resistant hasher? How do tests that use I/O, time or randomness interact with result caching? | values, interpreter | after M8 | — |
 | 30 | Should `dat test` skip unchanged tests by default, or only with `--changed`? | tooling | M6 | runs everything |
 | 31 | Should tests run when some modules fail to type-check, and if so which ones? | diagnostics | M1 | stops after printing the compile errors |
-| 32 | Test output: lines for passing tests, a summary line, per-test capture of `print` shown only on failure, and exit statuses for `dat test` and `dat check` (proposed 0/1/2) | interpreter, PoC, diagnostics | M0, M1 | proposed format, provisional |
+| 32 | Test output: lines for passing tests, a summary line, per-test capture of `print` shown only on failure, and exit statuses for `dat test` and `dat check` (proposed 0/1/2) | interpreter, PoC, diagnostics | M0, M1 | **Answered:** no line per passing test unless `--verbose`; captured `print` shown on failure; a summary line; exit 0 / 1 / 2, with 2 when tests couldn't run (§20, §21) |
 | 33 | Should test-failure output adopt error codes or rerun hints? This would change 20-testing.md | diagnostics | M1 | spec's `FAIL` format unchanged |
-| 34 | Correct the `FAIL math.dat:9` example (wrong line, and an assertion that can't fail) | PoC | M0 | PoC generates its own `FAIL` golden |
-| 35 | Where does the CLI reference (`check`, `build`, `run --compiled`) live, given that the spec names only `dat run` and `dat test`? | PoC | M0 | CLI docs outside `reference/` |
-| 36 | Does "errors state the exact fix" allow several alternatives? The spec's own `items.length` example lists two | diagnostics | M0 | `options:` used only where the spec lists several |
-| 37 | Should the spec's ❌ lines carry stable codes and fix text, and is their wording normative or illustrative? | diagnostics, PoC | M0 | exact match on the one-line form; codes live in the compiler |
+| 34 | Correct the `FAIL math.dat:9` example (wrong line, and an assertion that can't fail) | PoC | M0 | **Answered:** fixed; the sample now plants a bug and points at `math.dat:8` (§20) |
+| 35 | Where does the CLI reference (`check`, `build`, `run --compiled`) live, given that the spec names only `dat run` and `dat test`? | PoC | M0 | **Answered:** a new section, `reference/21-command-line.md` |
+| 36 | Does "errors state the exact fix" allow several alternatives? The spec's own `items.length` example lists two | diagnostics | M0 | **Answered:** one fix when the alternatives mean the same thing; up to three `option:` lines, never applied by `dat fix`, when the right one depends on intent (`reference/README.md`) |
+| 37 | Should the spec's ❌ lines carry stable codes and fix text, and is their wording normative or illustrative? | diagnostics, PoC | M0 | **Answered:** every ❌ line carries a stable code, numbered by spec section, and a fix. The code, the line and the fix are binding; the message wording isn't (`reference/README.md`) |
 | 38 | Should the spec gain ❌ examples for TypeScript habits (`===`, `class`, `any`, `undefined`), and where should the compact agent sheet live? | diagnostics | M1 | sheet ships with the tool |
 | 39 | May `reference/` gain fence tags (`dat`, `dat ignore`) and invisible prelude directives, so that blocks become runnable tests? Presentation only | PoC | after M0 | preludes kept in a sidecar file |
 
@@ -800,7 +804,7 @@ These 39 questions are collected from all seven notes and deduplicated. Each wou
 
 The research changes where the risk sits. The roadmap rated narrowing and runtime errors as its hardest Rust problems. With let-else and a measured 1.0× unwinding cost, both are now routine. The real hazards were ones the roadmap rated low or didn't list: copy semantics that go quadratic without a liveness pass, recursive drop that aborts below every guard, string and constant representations that don't survive dat's own idioms, and a budget table that can't tell a resident checker from a fresh process. Each of these is cheap to fix early and expensive to retrofit. That is the strongest argument for moving the ownership analysis to M2, the schema to M0, and the agent benchmark to M1–M2.
 
-The fibonacci skeleton is also the cheapest way to turn this report's estimates into facts. Its 17 criteria run the actual pipeline on Linux and macOS and replace the toy-interpreter and macOS-only numbers with real ones. Its fault-injection self-test checks that the two-mode promise is enforced rather than assumed. Its golden outputs make about a dozen of the owner's open questions concrete enough to answer in one sitting. The biggest bet in AGENTS.md, that compiler errors stating the exact fix save agent turns, has no published evidence either way. The milestone plan should treat it as an experiment to run by M2, not as a premise.
+The fibonacci skeleton is also the cheapest way to turn this report's estimates into facts. Its 17 criteria run the actual pipeline on Linux and macOS and replace the toy-interpreter and macOS-only numbers with real ones. Its fault-injection self-test checks that the two-mode promise is enforced rather than assumed. Its golden outputs make about a dozen of the owner's open questions concrete enough to answer in one sitting, and the owner answered eleven of them on 29 October. The biggest bet in AGENTS.md, that compiler errors stating the exact fix save agent turns, has no published evidence either way. The milestone plan should treat it as an experiment to run by M2, not as a premise.
 
 [n-tool]: <../research_notes/Dat lang roadmap decisions/tooling_speed.md>
 [n-interp]: <../research_notes/Dat lang roadmap decisions/interpreter.md>

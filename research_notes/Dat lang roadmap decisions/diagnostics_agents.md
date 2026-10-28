@@ -1,5 +1,7 @@
 # Agent-first diagnostics and tooling for dat-lang: structured fixes, evidence on LLM feedback, and measuring "fewest turns"
 
+> **Status, 29 October 2026.** These notes predate the owner's answers to questions 32, 36 and 37 in [the research report](../../reports/Dat%20lang%20roadmap%20decisions.md#questions-for-the-owner). Those answers are now in `reference/`, and they win wherever this note calls the questions open or proposes something else. The fix levels are `safe`, `review` and `option`, every ❌ line in the spec now carries a code numbered by section (`if (user)` is `E0701`) and a fix, and `dat test` exits 2 when the tests couldn't run, not 1.
+
 Scope note (October 28, 2026): these notes cover compiler diagnostics, fixes, output properties, in-context teaching of a new language, error recovery, and benchmark design. They are measured against the project rules in `AGENTS.md` ("an agent should finish a task in the fewest turns"; "compiler errors that state the exact fix"; checks and tests in milliseconds), the spec in `reference/`, and the draft roadmap (one diagnostic record with code, span, message and fix; `dat check --json`; `dat fix`; `dat explain`; `dat fmt`; LSP; error recovery; an agent benchmark scored by turns until `dat test` passes). Older sources (before 2025) are marked as such. "Measured" means a controlled experiment reported numbers; "claim" means a designer or vendor stated it without published measurements.
 
 What the spec already says about errors (from reading `reference/`):

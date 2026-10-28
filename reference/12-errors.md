@@ -246,12 +246,12 @@ A function type declares its errors the way a function does: `(text: string) => 
 If an error of either kind escapes `main`, the program writes it to stderr and exits with status 1. The output shows the error, then where it was thrown and each call that led there:
 
 ```
-RangeError: int overflow: 7540113804746346429 + 4660046610375530309
-  at fibIter (fib.dat:21:18)
-  at main (fib.dat:32:11)
+RangeError: int overflow: 4660046610375530309 + 7540113804746346429
+  at fibIter (overflow_uncaught.dat:9:18)
+  at main (overflow_uncaught.dat:17:9)
 ```
 
-- The trace lists dat functions only, never frames from the interpreter or the generated Rust, so it's the same in both run modes.
+- The trace lists dat functions only, never frames from the interpreter or the generated Rust.
 - Output the program printed to stdout before the error is flushed first, so a terminal shows the two in the order they happened.
 
 In a test, an uncaught error fails the test. See [Testing](./20-testing.md).
