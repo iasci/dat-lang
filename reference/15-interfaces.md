@@ -14,8 +14,9 @@ interface Shape {
 Interfaces declare methods only, never fields. For a data shape, use a [struct](./08-structs.md). If code needs a value from every implementing struct, declare a method that returns it.
 
 ```
-interface User { name: string; }   // ❌ Error: interfaces can't declare fields.
-                                   //    Use `struct User { name: string; }`, or a method `name(): string;`
+interface User { name: string; }   // ❌ E1501: interfaces can't declare fields
+                                   //    option: struct User { name: string; }
+                                   //    option: interface User { name(): string; }
 ```
 
 ## Implementing an Interface

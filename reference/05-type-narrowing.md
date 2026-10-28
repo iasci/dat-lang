@@ -22,7 +22,9 @@ A check that can never be true is a compile error:
 
 ```
 let id: int | string = 42;
-if (id is float) { }     // ❌ Error: int | string can never be a float
+if (id is float) { }     // ❌ E0501: int | string can never be a float
+                         //    option: if (id is int) { }
+                         //    option: if (id is string) { }
 ```
 
 `is` can also be used as an ordinary `bool` expression: `const isText = value is string;`.

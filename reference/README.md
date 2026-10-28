@@ -14,7 +14,21 @@ Every rule in this reference follows from one of these. When a rule looks odd, o
 
 ## Reading the Examples
 
-Code examples are fragments of a function body, unless they declare top-level items such as functions, structs or tests. `// ❌ Error:` marks a compile error, and `// throws RangeError` marks an error thrown at runtime.
+Code examples are fragments of a function body, unless they declare top-level items such as functions, structs or tests. `// throws RangeError` marks an error thrown at runtime, and `// ❌` marks a compile error, with the fix the compiler suggests below it:
+
+```
+"Total: " + 42     // ❌ E0301: can't add string and int
+                   //    fix: `Total: ${42}`
+```
+
+- **The code** names the rule that was broken and never changes. Its first two digits are the section that defines the rule, so `E0301` is in [Operators](./03-operators.md). The same mistake has the same code wherever it appears.
+- **`fix:`** shows the code as it reads after the fix. `dat fix` applies it.
+- **`fix (review):`** is a fix that changes what the code means, such as turning a `const` into a `let`. The compiler shows it, but `dat fix` leaves it to you.
+- **`option:`** lines appear when the right fix depends on what the author meant. `dat fix` applies none of them. When two fixes mean the same thing, the compiler gives only one.
+- **A place in parentheses**, such as `(declaration)` or `(math/index.dat)`, says where the edit goes when it isn't the marked line. A fix that needs several edits has one `fix` line per edit, and they're applied together.
+- **`_`** in a fix stands for a value or type only the author knows. A fix that contains `_` is always `review`.
+
+The code, the line the error is reported on and the fix are part of the language definition. The message wording isn't: the compiler may phrase it more clearly.
 
 ## Sections
 
@@ -38,6 +52,7 @@ Code examples are fragments of a function body, unless they declare top-level it
 18. [Enums and Unions](./18-enums-and-unions.md)
 19. [Generics](./19-generics.md)
 20. [Testing](./20-testing.md)
+21. [Command Line](./21-command-line.md)
 
 ## Not yet specified
 

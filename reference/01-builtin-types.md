@@ -40,7 +40,9 @@ print(entry[0]);              // alice
 const [name, age] = entry;    // name: string, age: int
 
 let i = 0;
-print(entry[i]);              // ❌ Error: tuple index must be a constant
+print(entry[i]);              // ❌ E0101: tuple index must be a constant
+                              //    option: print(entry[0]);
+                              //    option: print(entry[1]);
 ```
 
 A list literal becomes a tuple only where a tuple type is expected. Elsewhere it's a list: `["alice", 30]` on its own is a `list<int | string>`.
@@ -52,7 +54,8 @@ A list literal becomes a tuple only where a tuple type is expected. Elsewhere it
 ```
 let email: string? = null;
 let phone: string | null = "555-0100";   // same kind of type
-let name: string = null;                 // ❌ Error: string is not nullable
+let name: string = null;                 // ❌ E0102: string is not nullable
+                                         //    fix: let name: string? = null;
 ```
 
 ## Union Types
@@ -147,7 +150,8 @@ Generic types are invariant: a `list<int>` is not a `list<int | string>`. A conv
 
 ```
 const ints: list<int> = [1, 2, 3];
-const mixed: list<int | string> = ints;       // ❌ Error: list<int> is not list<int | string>
+const mixed: list<int | string> = ints;       // ❌ E0103: list<int> is not list<int | string>
+                                              //    fix: const mixed: list<int | string> = [...ints];
 const mixed: list<int | string> = [...ints];  // ✅ converts each element
 ```
 

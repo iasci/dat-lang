@@ -11,7 +11,7 @@ These are available everywhere without an import.
 
 ## `print`
 
-`print` accepts any number of values of any type. It converts each one with `toString()`, joins them with spaces, and ends the line. Strings are printed without quotes.
+`print` accepts any number of values of any type. It converts each one with `toString()`, joins them with spaces, ends the line, and writes the result to stdout. Strings are printed without quotes.
 
 ```
 print("Hello, World!");          // Hello, World!

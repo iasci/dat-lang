@@ -56,7 +56,8 @@ user.name = "Ada L.";
 user.tags.push("admin");
 
 const fixed = User { name: "Lin" };
-fixed.name = "X";      // ❌ Error: `fixed` is const
+fixed.name = "X";      // ❌ E0201: `fixed` is const and can't be modified
+                       //    fix (review, declaration): let fixed = User { name: "Lin" };
 ```
 
 ## Methods
@@ -92,7 +93,8 @@ print(r.area());    // 9.0
 
 ```
 const fixed = Rectangle.square(1.0);
-fixed.scale(2.0);    // ❌ Error: scale() is a mut method and `fixed` is const
+fixed.scale(2.0);    // ❌ E0201: scale() is a mut method and `fixed` is const
+                     //    fix (review, declaration): let fixed = Rectangle.square(1.0);
 ```
 
 ### Static Functions
@@ -125,8 +127,10 @@ struct Account {
 let account = Account.open("Ada");
 account.deposit(100);
 print(account.currentBalance());    // 100
-print(account.balance);             // ❌ Error: `balance` is private
-const fake = Account { owner: "Eve", balance: 1_000_000 };   // ❌ Error: can't set private field `balance`
+print(account.balance);             // ❌ E0801: `balance` is private
+                                    //    fix: print(account.currentBalance());
+const fake = Account { owner: "Eve", balance: 1_000_000 };   // ❌ E0802: can't set private field `balance`
+                                                             //    fix (review): const fake = Account.open("Eve");
 ```
 
 A struct literal must set every field that has no default. So a struct with a private field that has no default can only be created by its own static functions, which makes them the place to validate input.

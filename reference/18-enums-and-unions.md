@@ -113,7 +113,8 @@ enum Status { Active, Suspended, Deleted, Archived }
 const label = match (status) {
   Status.Active => "active",
   Status.Suspended | Status.Deleted => "inactive",
-};   // ❌ Error: match doesn't handle Status.Archived
+};   // ❌ E1801: match doesn't handle Status.Archived
+     //    fix (review, new arm): Status.Archived => _,
 ```
 
 ### Expressions and Statements

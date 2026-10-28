@@ -11,7 +11,8 @@ function main(): void {
     print(x + y);  // 30
   }
 
-  print(y);        // ❌ Error: y is not defined
+  print(y);        // ❌ E1401: y is not defined
+                   //    fix (review, move above the if): let y = 20;
 }
 ```
 
@@ -32,7 +33,8 @@ Declaring the same name twice in one scope is an error:
 
 ```
 let x = 10;
-let x = 20; // ❌ Error: x is already declared
+let x = 20; // ❌ E1402: x is already declared
+            //    fix (review): x = 20;
 ```
 
 ## Module Scope

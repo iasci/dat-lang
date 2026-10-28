@@ -13,8 +13,10 @@ if (x > 0) {
   print("Zero");
 }
 
-if (user) { }           // ❌ Error: condition must be bool; write `user != null`
-if (items.length) { }   // ❌ Error: write `items.length > 0` or `!items.isEmpty()`
+if (user) { }           // ❌ E0701: condition must be bool
+                        //    fix: if (user != null) { }
+if (items.length) { }   // ❌ E0701: condition must be bool
+                        //    fix: if (items.length > 0) { }
 ```
 
 ## Ternary Operator
@@ -50,7 +52,9 @@ const result = first ?? second ?? "fallback";
 
 ```
 let user: User? = findUser(id);
-const name = user.name;                  // ❌ Error: user may be null
+const name = user.name;                  // ❌ E0702: user may be null
+                                         //    option: const name = user?.name;
+                                         //    option: const name = user!.name;
 const name = user?.name;                 // string?
 const zip = user?.address?.zip;          // string?
 const len = user?.name.length ?? 0;      // int
@@ -135,7 +139,8 @@ for (mut user of users) {
 }
 
 for (mut user of users) {
-  users.push(user);        // ❌ Error: `users` is in use by the loop
+  users.push(user);        // ❌ E0703: `users` is in use by the loop
+                           //    fix (loop header): for (const user of users) {
 }
 ```
 

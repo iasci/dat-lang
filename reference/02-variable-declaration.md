@@ -11,16 +11,21 @@ items[0] = 10;     // ✅
 items = [4, 5];    // ✅
 
 const fixed = [1, 2];
-fixed.push(3);     // ❌ Error: `fixed` is const and can't be modified
-fixed[0] = 10;     // ❌ Error: `fixed` is const and can't be modified
-fixed = [4, 5];    // ❌ Error: `fixed` is const and can't be reassigned
+fixed.push(3);     // ❌ E0201: `fixed` is const and can't be modified
+                   //    fix (review, declaration): let fixed = [1, 2];
+fixed[0] = 10;     // ❌ E0201: `fixed` is const and can't be modified
+                   //    fix (review, declaration): let fixed = [1, 2];
+fixed = [4, 5];    // ❌ E0201: `fixed` is const and can't be reassigned
+                   //    fix (review, declaration): let fixed = [1, 2];
 
 let user = User { name: "Ada", tags: [] };
 user.tags.push("admin");   // ✅ any depth can change through a `let`
 
 const admin = User { name: "Lin", tags: [] };
-admin.name = "Kai";        // ❌ Error
-admin.tags.push("ops");    // ❌ Error
+admin.name = "Kai";        // ❌ E0201: `admin` is const and can't be modified
+                           //    fix (review, declaration): let admin = User { name: "Lin", tags: [] };
+admin.tags.push("ops");    // ❌ E0201: `admin` is const and can't be modified
+                           //    fix (review, declaration): let admin = User { name: "Lin", tags: [] };
 ```
 
 This differs from TypeScript, where `const` only prevents reassignment. In dat, mutability belongs to the variable, not to the type, so there are no separate read-only collection types.
@@ -75,8 +80,9 @@ Code written with references in mind tends to change a copy and expect the origi
 
 ```
 let tags = user.tags;
-tags.push("admin");   // ❌ Error: `tags` is modified but never used afterwards.
+tags.push("admin");   // ❌ E0202: `tags` is modified but never used afterwards.
                       //    It is a copy of `user.tags`; modify `user.tags` directly.
+                      //    fix (review): user.tags.push("admin");
 ```
 
 If a `let` variable starts as a copy of another variable, a field or an element, is modified, and is never read afterwards, the compiler reports an error, so this mistake can't pass silently. Write `user.tags.push("admin");` instead, or assign the copy back with `user.tags = tags;`. The same check catches `for (let user of users) { user.active = true; }`, where the fix is a [`mut` loop variable](./07-control-flow.md#mut-loop-variables).
@@ -90,7 +96,8 @@ let email: string? = null;
 let email: string | null = "ada@example.com";
 let email: string?;              // starts as null
 
-let email: string = null;        // ❌ Error: string is not nullable
+let email: string = null;        // ❌ E0102: string is not nullable
+                                 //    fix: let email: string? = null;
 ```
 
 ## Type Inference
@@ -121,10 +128,15 @@ const ratio: float = 1;                        // float
 Some declarations can't be inferred and are invalid:
 
 ```
-let x: int;           // ❌ Error: a non-nullable variable needs a value
-let x;                // ❌ Error: no type and no value
-const x: string;      // ❌ Error: const must be initialized
-let items = [];       // ❌ Error: can't infer the element type; write `let items: list<int> = [];`
+let x: int;           // ❌ E0203: a non-nullable variable needs a value
+                      //    option: let x: int = _;
+                      //    option: let x: int?;
+let x;                // ❌ E0204: no type and no value
+                      //    fix (review): let x = _;
+const x: string;      // ❌ E0205: const must be initialized
+                      //    fix (review): const x: string = _;
+let items = [];       // ❌ E0206: can't infer the element type
+                      //    fix (review): let items: list<_> = [];
 ```
 
 ## Destructuring

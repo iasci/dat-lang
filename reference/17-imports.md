@@ -77,8 +77,11 @@ export { Matrix } from "./matrix.dat";
 ```
 // app/main.dat
 import { Vector, Matrix } from "../math";          // ✅ exported from index.dat
-import { clamp } from "../math";                   // ❌ Error: 'clamp' is not exported
-import { clamp } from "../math/helpers.dat";       // ❌ Error: can't reach into a folder past its index.dat
+import { clamp } from "../math";                   // ❌ E1701: 'clamp' is not exported
+                                                   //    fix (review, math/index.dat): export { clamp } from "./helpers.dat";
+import { clamp } from "../math/helpers.dat";       // ❌ E1702: can't reach into a folder past its index.dat
+                                                   //    fix (review): import { clamp } from "../math";
+                                                   //    fix (review, math/index.dat): export { clamp } from "./helpers.dat";
 ```
 
 ### Sibling Access
@@ -110,7 +113,8 @@ Only imported symbols are available. Using one that wasn't imported is a compile
 ```
 import { Vector } from "../math";
 
-const d = dot(v, v);  // ❌ Error: 'dot' is not defined
+const d = dot(v, v);  // ❌ E1401: 'dot' is not defined
+                      //    fix (import): import { Vector, dot } from "../math";
 ```
 
 ## Namespace Imports

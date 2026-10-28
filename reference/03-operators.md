@@ -36,7 +36,8 @@ Edge cases:
 
 ```
 "Hello, " + name            // ✅ both are strings
-"Total: " + 42              // ❌ Error: can't add string and int
+"Total: " + 42              // ❌ E0301: can't add string and int
+                            //    fix: `Total: ${42}`
 `Total: ${42}`              // ✅
 "Total: " + 42.toString()   // ✅
 ```
@@ -49,7 +50,9 @@ Edge cases:
 let total = 0;
 total += 5;
 total *= 2;      // 10
-total /= 4;      // ❌ Error: total is an int, but `total / 4` is a float
+total /= 4;      // ❌ E0302: total is an int, but `total / 4` is a float
+                 //    option: total = Math.floor(total / 4);
+                 //    option (declaration): let total = 0.0;
 ```
 
 Assignments are statements, not expressions, so `if (x = 1)` and `a = b = 0` are errors.
@@ -63,8 +66,10 @@ let i = 0;
 i++;           // i is now 1
 i--;           // i is now 0
 
-let y = i++;   // ❌ Error: ++ is a statement
-++i;           // ❌ Error: no prefix form
+let y = i++;   // ❌ E0303: ++ is a statement
+               //    fix: let y = i; i++;
+++i;           // ❌ E0304: no prefix form
+               //    fix: i++;
 ```
 
 ## Comparison
@@ -126,3 +131,23 @@ From highest to lowest:
 | 11 | `=>` |
 
 Operators at the same level group from left to right, except `? :`, which groups from right to left.
+
+## Evaluation Order
+
+Expressions are evaluated from left to right. The order shows when the parts print, throw or change a `mut` argument:
+
+- The left operand of a binary operator is evaluated before the right one. `&&` and `||` still skip the right side when the left side decides the result. See [Logical Operators](./07-control-flow.md#logical-operators).
+- A call evaluates the value it's called on first, then the arguments in order.
+- List and struct literals evaluate their elements and fields in the order they're written.
+- `x op= y` evaluates the target first, including any index in it such as `xs[next()]`, then reads its current value, then evaluates `y`.
+
+```
+function label(text: string): string {
+  print(text);
+  return text;
+}
+
+print(label("a") + label("b"));   // prints a, then b, then ab
+```
+
+This is the order TypeScript uses. Both run modes follow it exactly.

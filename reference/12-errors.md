@@ -75,7 +75,7 @@ try {
 - `catch (e: A | B)` catches either type, and `e` has the type `A | B`.
 - `catch (e: Error)` catches every remaining error, declared or runtime, converted to [`Error`](#the-error-type). It must be the last clause.
 - `catch (e)` without a type also catches every remaining error, but keeps its type: `e` is the union of the remaining declared error types and the runtime error types. It must be the last clause.
-- A `catch` clause for a declared error type that nothing in the block can throw is a compile error.
+- A `catch` clause for a declared error type that nothing in the block can throw is a compile error. This doesn't apply to `catch (e: Error)` or `catch (e)`: runtime errors can come from almost any line, so a catch-all is never dead code.
 - Declared errors that no clause catches propagate out of the function, which must declare them. Runtime errors that no clause catches keep propagating.
 - A `catch` clause can rethrow the error with `throw e;`.
 - Changes made in the block before the error stay: a `let` variable or a `mut` parameter changed before the failure keeps the change.
@@ -143,6 +143,7 @@ Every built-in error type is a struct with one field, `message: string`.
 | `KeyError` | Runtime | `m[key]` when `key` is missing |
 | `TypeError` | Runtime | `x!` when `x` is `null`; `x as T` when `x` isn't a `T` |
 | `AssertionError` | Runtime | A failed `assert`; `fail(message)`; `try!` when the call fails; a module constant whose initializer depends on itself |
+| `StackOverflowError` | Runtime | A call that nests deeper than the stack allows. See [Recursion Depth](#recursion-depth). |
 
 ### Throwing Runtime Errors
 
@@ -199,6 +200,35 @@ struct ParseError {
 
 The built-in error types show their name and message: `RangeError: index 5 out of range for length 3`.
 
+`int` overflow and `int % 0` name the operation and the values involved:
+
+```
+RangeError: int overflow: 9223372036854775807 + 1
+RangeError: int overflow: -(-9223372036854775808)
+RangeError: int remainder by zero: 7 % 0
+```
+
+`i++`, `i--` and compound assignments such as `i += 1` report the operation they perform, so an `i++` that overflows reads `9223372036854775807 + 1`.
+
+## Recursion Depth
+
+A call that nests deeper than the stack allows throws a `StackOverflowError`. It's a runtime error, so it needs no `throws`, and it can be caught like any other:
+
+```
+function forever(n: int): void {
+  forever(n + 1);
+}
+
+try {
+  forever(0);
+} catch (e: StackOverflowError) {
+  print("too deep");
+}
+```
+
+- Every program can nest at least 10,000 calls, in both run modes. How much deeper it can go depends on the run mode and the platform, so code that needs more depth should use a loop.
+- `try?` never turns a `StackOverflowError` into `null`. The overflow always happens inside a called function, and `try?` doesn't cover errors raised inside the functions it calls.
+
 ## Errors in Callbacks
 
 If a callback passed to a built-in method can throw a declared error, the method call can throw the same errors and needs `try`:
@@ -213,4 +243,15 @@ A function type declares its errors the way a function does: `(text: string) => 
 
 ## Uncaught Errors
 
-If an error of either kind escapes `main`, the program prints it with its source location and a stack trace, and exits with status 1. In a test, an uncaught error fails the test. See [Testing](./20-testing.md).
+If an error of either kind escapes `main`, the program writes it to stderr and exits with status 1. The output shows the error, then where it was thrown and each call that led there:
+
+```
+RangeError: int overflow: 7540113804746346429 + 4660046610375530309
+  at fibIter (fib.dat:21:18)
+  at main (fib.dat:32:11)
+```
+
+- The trace lists dat functions only, never frames from the interpreter or the generated Rust, so it's the same in both run modes.
+- Output the program printed to stdout before the error is flushed first, so a terminal shows the two in the order they happened.
+
+In a test, an uncaught error fails the test. See [Testing](./20-testing.md).

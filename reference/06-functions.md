@@ -37,7 +37,8 @@ function sign(x: int): string {
   if (x < 0) {
     return "negative";
   }
-}   // ❌ Error: missing return when x == 0
+}   // ❌ E0601: missing return when x == 0
+    //    fix (review, end of sign): return _;
 ```
 
 A function that can fail declares the failure with `throws`. See [Errors](./12-errors.md).
@@ -123,7 +124,9 @@ const total = [1.5, 2.5].reduce((sum, x) => sum + x, 0.0);
 Without that context, parameter types are required:
 
 ```
-const fn = (x) => x * 2;        // ❌ Error: can't infer the type of x
+const fn = (x) => x * 2;        // ❌ E0602: can't infer the type of x
+                                //    option: const fn = (x: int) => x * 2;
+                                //    option: const fn = (x: float) => x * 2;
 const fn = (x: int) => x * 2;   // ✅
 ```
 
@@ -137,7 +140,8 @@ const withTax = (price: float) => price * (1.0 + rate);   // ✅
 
 let total = 0.0;
 items.forEach((item) => {
-  total += item.price;     // ❌ Error: closures can't use the `let` variable `total`
+  total += item.price;     // ❌ E0603: closures can't use the `let` variable `total`
+                           //    fix (whole forEach): for (const item of items) { total += item.price; }
 });
 
 for (const item of items) {
