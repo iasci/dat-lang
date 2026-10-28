@@ -1,0 +1,9 @@
+[package]
+name = "gen"
+version = "0.0.0"
+edition = "2021"
+[dependencies]
+dat_rt = { path = "../dat_rt" }
+[profile.release]
+codegen-units = 1
+panic = "unwind"

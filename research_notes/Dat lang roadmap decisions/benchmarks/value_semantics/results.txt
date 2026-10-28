@@ -1,0 +1,207 @@
+rustc 1.99.0, target aarch64 
+
+== A. list<int> representations ==
+A1 copy n=1000: Vec<i64>::clone (deep copy)                                                  96.41 ns
+A1 copy n=1000: Rc<Vec<i64>>::clone (share)                                                   2.59 ns
+A1 copy n=1000: Arc<Vec<i64>>::clone (share)                                                  3.55 ns
+A1 copy n=1000: ecow::EcoVec::clone (share)                                                   3.57 ns
+A1 copy n=1000: imbl::Vector::clone (persistent)                                              7.19 ns
+A1 copy n=1000: rpds::Vector::clone (persistent)                                              2.35 ns
+A1 copy n=100000: Vec<i64>::clone (deep copy)                                                 9.60 us
+A1 copy n=100000: Rc<Vec<i64>>::clone (share)                                                 2.63 ns
+A1 copy n=100000: Arc<Vec<i64>>::clone (share)                                                3.51 ns
+A1 copy n=100000: ecow::EcoVec::clone (share)                                                 3.57 ns
+A1 copy n=100000: imbl::Vector::clone (persistent)                                            7.15 ns
+A1 copy n=100000: rpds::Vector::clone (persistent)                                            2.41 ns
+-- push 1M ints into an empty list
+A2 push 1M: Vec::push                                                                       875.92 us
+A2 push 1M: Rc<Vec> + Rc::make_mut on every push (unique)                                     1.61 ms
+A2 push 1M: Arc<Vec> + Arc::make_mut on every push (unique)                                   2.49 ms
+A2 push 1M: ecow::EcoVec::push                                                                3.47 ms
+A2 push 1M: imbl::Vector::push_back                                                           6.34 ms
+A2 push 1M: rpds::Vector::push_back_mut                                                      36.79 ms
+-- read 1M ints
+A3 sum via iterator 1M: Vec                                                                  75.86 us
+A3 sum via iterator 1M: Rc<Vec>                                                              74.59 us
+A3 sum via iterator 1M: EcoVec                                                               74.12 us
+A3 sum via iterator 1M: imbl::Vector                                                        758.82 us
+A3 sum via iterator 1M: rpds::Vector                                                          2.04 ms
+A3 sum via xs[i] loop 1M: Vec (bounds-checked)                                               75.99 us
+A3 sum via xs[i] loop 1M: imbl::Vector                                                        6.60 ms
+A3 sum via xs[i] loop 1M: rpds::Vector                                                        2.16 ms
+-- xs[i] += 1 over 1M (list already unique)
+A4 xs[i]+=1 1M: Vec                                                                         117.28 us
+A4 xs[i]+=1 1M: Rc<Vec>, make_mut per write (naive codegen)                                   1.23 ms
+A4 xs[i]+=1 1M: Rc<Vec>, one make_mut hoisted before loop                                   363.44 us
+A4 xs[i]+=1 1M: EcoVec, make_mut per write                                                  515.55 us
+A4 xs[i]+=1 1M: imbl::Vector get_mut                                                         18.86 ms
+A4 xs[i]+=1 1M: rpds::Vector set_mut                                                         29.54 ms
+-- list<list<int>> 1000x1000: copy, then change one element of the copy
+A5 nested: Vec<Vec<i64>> deep clone + set                                                   190.79 us
+A5 nested: Rc<Vec<Rc<Vec>>> COW (outer: 1000 Rc bumps, 1 inner copied)                      760.05 ns
+A5 nested: EcoVec<EcoVec> COW                                                                35.82 us
+A5 nested: imbl::Vector<imbl::Vector> path copy                                             942.71 ns
+-- list held in a struct field, pushed through a mut parameter (&mut)
+A6 1M addItem(mut cart, x): field Vec<i64>                                                    2.63 ms
+A6 1M addItem(mut cart, x): field Rc<Vec<i64>> + make_mut                                     2.87 ms
+-- spec §16 grouping example: let m = byTeam.get(k, []); m.push(x); byTeam[k] = m;
+A7 group 10000 items/10 keys: get-copy-push-store, naive COW                                  1.39 ms
+A7 group 10000 items/10 keys: same code, compiler moves value out (take+restore)            194.49 us
+A7 group 10000 items/10 keys: entry API in place                                             94.04 us
+A7 group 50000 items/10 keys: get-copy-push-store, naive COW                                 19.92 ms
+A7 group 50000 items/10 keys: same code, compiler moves value out (take+restore)            942.64 us
+A7 group 50000 items/10 keys: entry API in place                                            464.31 us
+-- spec §07 for..of over a snapshot while the body pushes to the same list
+A8 build 100k + for..of with push in body: Vec, index loop, no snapshot                     172.67 us
+A8 build 100k + for..of with push in body: Rc COW snapshot (1 copy on first push)           238.39 us
+A8 build 100k + for..of with push in body: Vec, eager snapshot clone                        238.21 us
+
+== B. insertion-ordered map/set and hashers ==
+B1 insert 1000000 u64: std HashMap + SipHash-1-3 (std RandomState)                           32.91 ms
+B1 insert 1000000 u64: IndexMap + SipHash-1-3 (std RandomState)                              37.22 ms
+B1 insert 1000000 u64: hashlink::LinkedHashMap + SipHash-1-3 (std RandomState)               89.29 ms
+B2 lookup 1000000 hits: std HashMap + SipHash-1-3 (std RandomState)                          19.30 ms
+B2 lookup 1000000 hits: IndexMap + SipHash-1-3 (std RandomState)                             15.68 ms
+B2 lookup 1000000 hits: LinkedHashMap + SipHash-1-3 (std RandomState)                        10.53 ms
+B3 iterate 1000000: std HashMap + SipHash-1-3 (std RandomState)                               2.08 ms
+B3 iterate 1000000: IndexMap + SipHash-1-3 (std RandomState)                                218.47 us
+B3 iterate 1000000: LinkedHashMap + SipHash-1-3 (std RandomState)                             1.47 ms
+B1 insert 1000000 u64: std HashMap + foldhash::fast                                          18.79 ms
+B1 insert 1000000 u64: IndexMap + foldhash::fast                                             33.13 ms
+B1 insert 1000000 u64: hashlink::LinkedHashMap + foldhash::fast                              45.27 ms
+B2 lookup 1000000 hits: std HashMap + foldhash::fast                                          7.64 ms
+B2 lookup 1000000 hits: IndexMap + foldhash::fast                                             7.19 ms
+B2 lookup 1000000 hits: LinkedHashMap + foldhash::fast                                        4.50 ms
+B3 iterate 1000000: std HashMap + foldhash::fast                                              2.11 ms
+B3 iterate 1000000: IndexMap + foldhash::fast                                               212.54 us
+B3 iterate 1000000: LinkedHashMap + foldhash::fast                                            1.52 ms
+B1 insert 1000000 u64: std HashMap + foldhash::quality                                       19.71 ms
+B1 insert 1000000 u64: IndexMap + foldhash::quality                                          33.05 ms
+B1 insert 1000000 u64: hashlink::LinkedHashMap + foldhash::quality                           49.51 ms
+B2 lookup 1000000 hits: std HashMap + foldhash::quality                                       8.51 ms
+B2 lookup 1000000 hits: IndexMap + foldhash::quality                                          8.02 ms
+B2 lookup 1000000 hits: LinkedHashMap + foldhash::quality                                     5.57 ms
+B3 iterate 1000000: std HashMap + foldhash::quality                                           2.08 ms
+B3 iterate 1000000: IndexMap + foldhash::quality                                            216.03 us
+B3 iterate 1000000: LinkedHashMap + foldhash::quality                                         1.34 ms
+B1 insert 1000000 u64: std HashMap + ahash                                                   19.53 ms
+B1 insert 1000000 u64: IndexMap + ahash                                                      33.13 ms
+B1 insert 1000000 u64: hashlink::LinkedHashMap + ahash                                       47.93 ms
+B2 lookup 1000000 hits: std HashMap + ahash                                                   8.97 ms
+B2 lookup 1000000 hits: IndexMap + ahash                                                      6.96 ms
+B2 lookup 1000000 hits: LinkedHashMap + ahash                                                 6.19 ms
+B3 iterate 1000000: std HashMap + ahash                                                       2.11 ms
+B3 iterate 1000000: IndexMap + ahash                                                        231.54 us
+B3 iterate 1000000: LinkedHashMap + ahash                                                     1.54 ms
+B1 insert 1000000 u64: std HashMap + FxHash (rustc-hash 2)                                   18.04 ms
+B1 insert 1000000 u64: IndexMap + FxHash (rustc-hash 2)                                      33.80 ms
+B1 insert 1000000 u64: hashlink::LinkedHashMap + FxHash (rustc-hash 2)                       44.72 ms
+B2 lookup 1000000 hits: std HashMap + FxHash (rustc-hash 2)                                   5.87 ms
+B2 lookup 1000000 hits: IndexMap + FxHash (rustc-hash 2)                                      7.86 ms
+B2 lookup 1000000 hits: LinkedHashMap + FxHash (rustc-hash 2)                                 4.50 ms
+B3 iterate 1000000: std HashMap + FxHash (rustc-hash 2)                                       2.11 ms
+B3 iterate 1000000: IndexMap + FxHash (rustc-hash 2)                                        220.33 us
+B3 iterate 1000000: LinkedHashMap + FxHash (rustc-hash 2)                                     1.67 ms
+-- removal from a 100k-entry map, removing 10k keys (every 10th)
+B4 IndexMap 100k: clone only (baseline)                                                     318.39 us
+B4 IndexMap 100k: clone + swap_remove 10k (O(1) each, moves last entry into the hole)       380.15 us
+B4 IndexMap 100k: clone + shift_remove 10k (O(n) each, keeps order)                            1.39 s
+B4 IndexMap 100k: clone + retain (one O(n) pass, keeps order)                               680.26 us
+B4 LinkedHashMap 100k: clone only (baseline)                                                  2.74 ms
+B4 LinkedHashMap 100k: clone + remove 10k (O(1), keeps order)                                 3.00 ms
+B6 copy map 100k: Rc<IndexMap> clone (share)                                                  2.67 ns
+-- string keys
+B5 1000000 string-key lookups (100k keys): std HashMap + SipHash-1-3                         20.78 ms
+B5 1000000 string-key lookups (100k keys): IndexMap + SipHash-1-3                            27.87 ms
+B5 1000000 string-key lookups (100k keys): std HashMap + foldhash::fast                      12.06 ms
+B5 1000000 string-key lookups (100k keys): IndexMap + foldhash::fast                         15.05 ms
+B5 1000000 string-key lookups (100k keys): std HashMap + ahash                               12.68 ms
+B5 1000000 string-key lookups (100k keys): IndexMap + ahash                                  16.79 ms
+B5 1000000 string-key lookups (100k keys): std HashMap + FxHash                              11.33 ms
+B5 1000000 string-key lookups (100k keys): IndexMap + FxHash                                 13.71 ms
+
+== C. string representations ==
+C0 size_of: String=24 Box<str>=16 Rc<str>=16 Arc<str>=16 Rc<String>=8 CompactString=24 SmolStr=24 EcoString=16 Option<EcoString>=24 Option<Rc<str>>=16
+C1 copy len=5: String::clone (malloc+memcpy)                                                 11.01 ns
+C1 copy len=5: Rc<str>::clone                                                                 2.55 ns
+C1 copy len=5: Arc<str>::clone                                                                3.57 ns
+C1 copy len=5: CompactString::clone (inline<=24, else heap copy)                              0.40 ns
+C1 copy len=5: SmolStr::clone (inline<=23, else Arc)                                          0.38 ns
+C1 copy len=5: EcoString::clone (inline<=15, else refcount)                                   0.31 ns
+C1 copy len=15: String::clone (malloc+memcpy)                                                11.62 ns
+C1 copy len=15: Rc<str>::clone                                                                2.57 ns
+C1 copy len=15: Arc<str>::clone                                                               3.58 ns
+C1 copy len=15: CompactString::clone (inline<=24, else heap copy)                             0.41 ns
+C1 copy len=15: SmolStr::clone (inline<=23, else Arc)                                         0.37 ns
+C1 copy len=15: EcoString::clone (inline<=15, else refcount)                                  0.31 ns
+C1 copy len=16: String::clone (malloc+memcpy)                                                10.71 ns
+C1 copy len=16: Rc<str>::clone                                                                2.60 ns
+C1 copy len=16: Arc<str>::clone                                                               3.57 ns
+C1 copy len=16: CompactString::clone (inline<=24, else heap copy)                             0.41 ns
+C1 copy len=16: SmolStr::clone (inline<=23, else Arc)                                         0.37 ns
+C1 copy len=16: EcoString::clone (inline<=15, else refcount)                                  3.66 ns
+C1 copy len=24: String::clone (malloc+memcpy)                                                12.36 ns
+C1 copy len=24: Rc<str>::clone                                                                2.63 ns
+C1 copy len=24: Arc<str>::clone                                                               3.58 ns
+C1 copy len=24: CompactString::clone (inline<=24, else heap copy)                             0.42 ns
+C1 copy len=24: SmolStr::clone (inline<=23, else Arc)                                         3.75 ns
+C1 copy len=24: EcoString::clone (inline<=15, else refcount)                                  3.63 ns
+C1 copy len=25: String::clone (malloc+memcpy)                                                12.13 ns
+C1 copy len=25: Rc<str>::clone                                                                2.61 ns
+C1 copy len=25: Arc<str>::clone                                                               3.58 ns
+C1 copy len=25: CompactString::clone (inline<=24, else heap copy)                            11.54 ns
+C1 copy len=25: SmolStr::clone (inline<=23, else Arc)                                         3.74 ns
+C1 copy len=25: EcoString::clone (inline<=15, else refcount)                                  3.56 ns
+C1 copy len=100: String::clone (malloc+memcpy)                                               11.06 ns
+C1 copy len=100: Rc<str>::clone                                                               2.56 ns
+C1 copy len=100: Arc<str>::clone                                                              3.57 ns
+C1 copy len=100: CompactString::clone (inline<=24, else heap copy)                           12.00 ns
+C1 copy len=100: SmolStr::clone (inline<=23, else Arc)                                        3.74 ns
+C1 copy len=100: EcoString::clone (inline<=15, else refcount)                                 3.60 ns
+-- s += "ab" in a loop (spec: strings are immutable values; `+=` rebinds)
+C2 append x10000: String::push_str (unique buffer, amortized O(1))                            3.20 us
+C2 append x10000: Rc<str>, new string per += (O(n^2))                                         2.34 ms
+C2 append x10000: Rc<String> + make_mut push_str (in place when unique)                       7.81 us
+C2 append x10000: EcoString::push_str (in place when unique)                                 36.58 us
+C2 append x10000: CompactString::push_str                                                    16.34 us
+C2 append x40000: String::push_str (unique buffer, amortized O(1))                           48.99 us
+C2 append x40000: Rc<str>, new string per += (O(n^2))                                       298.44 ms
+C2 append x40000: Rc<String> + make_mut push_str (in place when unique)                      53.78 us
+C2 append x40000: EcoString::push_str (in place when unique)                                160.06 us
+C2 append x40000: CompactString::push_str                                                    92.75 us
+-- build a 1000-word line with `line = line + w + " "` while a copy of line is alive each step
+C3 1000 appends, previous value kept alive each step: EcoString (copies each time)           79.01 us
+
+== D. Rc vs Arc ==
+D1 clone+drop: Rc                                                                             2.79 ns
+D1 clone+drop: Arc (uncontended)                                                              3.49 ns
+D2 1000 clones into a Vec, then drop all: Rc                                                709.59 ns
+D2 1000 clones into a Vec, then drop all: Arc                                                 3.54 us
+D3 make_mut on unique value + write: Rc                                                       1.08 ns
+D3 make_mut on unique value + write: Arc                                                      1.94 ns
+D4 Arc clone+drop, SAME Arc from 1 threads (wall ns per op per thread)                        3.50 ns
+D4 Arc clone+drop, one Arc PER thread, 1 threads (wall ns per op per thread)                  3.59 ns
+D4 Arc clone+drop, SAME Arc from 2 threads (wall ns per op per thread)                       17.57 ns
+D4 Arc clone+drop, one Arc PER thread, 2 threads (wall ns per op per thread)                  3.64 ns
+D4 Arc clone+drop, SAME Arc from 4 threads (wall ns per op per thread)                       95.60 ns
+D4 Arc clone+drop, one Arc PER thread, 4 threads (wall ns per op per thread)                  3.63 ns
+D4 Arc clone+drop, SAME Arc from 8 threads (wall ns per op per thread)                      438.67 ns
+D4 Arc clone+drop, one Arc PER thread, 8 threads (wall ns per op per thread)                  3.91 ns
+
+== E. structs (User: 5 string/list fields + 3 scalars) ==
+E1 copy one User: unboxed struct, Rc fields (5 refcount bumps)                                4.02 ns
+E1 copy one User: unboxed struct, Arc fields (5 atomic bumps)                                 7.94 ns
+E1 copy one User: Rc<User> (1 refcount bump)                                                  2.67 ns
+E1 copy one User: owned String/Vec fields (deep, 6 mallocs)                                  83.56 ns
+E2 list<User> 10k: copy, then set users[5].age: Rc<Vec<User>> (10k struct clones)            42.32 us
+E2 list<User> 10k: copy, then set users[5].age: Rc<Vec<Rc<User>>> (10k bumps + 1 struct)     18.35 us
+E2 list<User> 10k: copy, then set users[5].age: Vec<User> owned (deep)                      948.17 us
+E3 for (mut u of users) u.age += 1, 10k: Rc<Vec<User>> unique, iter_mut                       6.51 us
+E3 for (mut u of users) u.age += 1, 10k: Rc<Vec<Rc<User>>> unique, make_mut each             12.86 us
+
+== F. recursive struct ListNode { value, next: ListNode? } ==
+F1 copy 10k-node list: Option<Box<Node>> (deep, recursive clone)                            226.17 us
+F1 copy 10k-node list: Option<Rc<Node>> (share)                                               2.94 ns
+F1 copy 10k-node list + set head.value: Option<Rc<Node>> (path copy of 1 node)               11.53 ns
+F1 copy 10k-node list + set head.value: Option<Box<Node>> (deep)                            230.63 us
+exit 0

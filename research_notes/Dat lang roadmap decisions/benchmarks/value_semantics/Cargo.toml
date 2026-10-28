@@ -1,0 +1,21 @@
+[package]
+name = "vsbench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+indexmap = "2"
+hashlink = "0.12"
+imbl = "*"
+rpds = "1"
+ecow = "0.3"
+compact_str = "0.10"
+smol_str = "0.3"
+foldhash = "0.2"
+ahash = "0.8"
+rustc-hash = "2"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "thin"

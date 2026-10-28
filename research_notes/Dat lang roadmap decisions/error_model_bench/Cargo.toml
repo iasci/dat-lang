@@ -1,0 +1,15 @@
+[package]
+name = "errbench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stacker = "0.1"
+psm = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+debug = false

@@ -1,0 +1,194 @@
+# machine: Apple M4 Pro, macOS (Darwin 24.6.0), rustc 1.99.0 (b940084d7 2026-09-28); profile: opt-level=3, lto=fat, codegen-units=1, panic=unwind; each row = fastest of 9 runs
+## run A
+== recursion guards, fib(32) = 7.05M calls (worst case: almost no work per call)
+fib plain (no guard)                                               3.778 ms      0.536 ns/op
+fib + depth counter in thread_local (inc/dec)                     10.098 ms      1.432 ns/op
+                                                                -> +0.90 ns/call, +167.3%
+fib + depth counter, Drop guard (dec on unwind)                   10.026 ms      1.422 ns/op
+                                                                -> +0.89 ns/call, +165.4%
+fib + depth passed as hidden argument                              5.335 ms      0.757 ns/op
+                                                                -> +0.22 ns/call, +41.2%
+fib + SP check (address of local vs TLS limit)                     8.500 ms      1.206 ns/op
+                                                                -> +0.67 ns/call, +125.0%
+fib + SP check (inline asm SP vs TLS limit)                        6.773 ms      0.961 ns/op
+                                                                -> +0.42 ns/call, +79.3%
+fib + shadow stack push/pop (TLS index)                            9.995 ms      1.418 ns/op
+                                                                -> +0.88 ns/call, +164.5%
+fib + stacker::remaining_stack() check                            11.033 ms      1.565 ns/op
+                                                                -> +1.03 ns/call, +192.0%
+fib + stacker::maybe_grow (heap stack segments)                   11.196 ms      1.588 ns/op
+                                                                -> +1.05 ns/call, +196.3%
+== recursion guards, binary tree sum, 2^22-1 nodes (8.4M calls incl. leaves)
+tree plain                                                         7.432 ms      0.886 ns/op
+tree + depth counter TLS                                          13.694 ms      1.632 ns/op
+                                                                -> +0.75 ns/call, +84.3%
+tree + SP check asm                                               10.196 ms      1.215 ns/op
+                                                                -> +0.33 ns/call, +37.2%
+tree + depth as hidden argument                                    8.538 ms      1.018 ns/op
+                                                                -> +0.13 ns/call, +14.9%
+tree + SP check asm vs global (non-TLS) limit                      8.867 ms      1.057 ns/op
+                                                                -> +0.17 ns/call, +19.3%
+fib + SP check asm vs global (non-TLS) limit                       4.510 ms      0.640 ns/op
+                                                                -> +0.10 ns/call, +19.4%
+tree + stacker::maybe_grow                                        15.348 ms      1.830 ns/op
+                                                                -> +0.94 ns/call, +106.5%
+== happy path: checked fib(32), unwinding vs Result
+fib wrapping (no check, plain i64 return)                          3.581 ms      0.508 ns/op
+fib checked_add, unwind on overflow (returns i64)                  4.707 ms      0.668 ns/op
+                                                                -> +0.16 ns/call, +31.5% vs wrapping
+fib checked_add, Result<i64, Box<E>> (16 B, 2 regs)                7.580 ms      1.075 ns/op
+                                                                -> +0.57 ns/call, +111.7% vs wrapping
+fib checked_add, Result<i64, E{String}> (in memory)                7.916 ms      1.123 ns/op
+                                                                -> +0.61 ns/call, +121.1% vs wrapping
+fib checked, unwind + depth arg (realistic combo)                  4.751 ms      0.674 ns/op
+                                                                -> +0.17 ns/call, +32.7% vs wrapping
+fib checked, Result<i64,Box<E>> + depth arg                        7.533 ms      1.069 ns/op
+                                                                -> +0.56 ns/call, +110.4% vs wrapping
+   size_of Result<i64,Box<E>> = 16, Result<i64,E> = 24, Result<P3,Box<E>> = 32
+P3 chain, unwind (20M non-inlined calls)                          81.657 ms      4.083 ns/op
+P3 chain, Result<P3, Box<E>> + ?                                  89.215 ms      4.461 ns/op
+                                                                -> +0.38 ns/call, +9.3%
+== catch_unwind when nothing is thrown
+plain non-inlined call                                            36.197 ms      0.724 ns/op
+same call inside catch_unwind                                     36.137 ms      0.723 ns/op
+                                                                -> +-0.00 ns per catch_unwind entry
+== cost of one throw (caught)
+panic_any + catch_unwind, silent hook, 0 frames                 1302.735 ms   6513.674 ns/op
+resume_unwind + catch_unwind (no hook call), 0 frames           1168.179 ms   5840.895 ns/op
+resume_unwind through 10 frames with a String each               613.953 ms  30697.669 ns/op
+Err(Box<E>) via ? through 10 frames with a String each             2.141 ms    107.065 ns/op
+resume_unwind through 100 frames with a String each             4826.504 ms 241325.192 ns/op
+Err(Box<E>) via ? through 100 frames with a String each           24.221 ms   1211.050 ns/op
+resume_unwind through 10 frames, no destructors                  344.310 ms  17215.494 ns/op
+resume_unwind through 100 frames, no destructors                2115.028 ms 105751.408 ns/op
+Backtrace::force_capture() (unresolved), at depth ~5               7.571 ms   3785.438 ns/op
+== overflow checks (checked ops that unwind) vs wrapping ops
+sum 1M i64 (vectorizable) wrapping                                 0.074 ms      0.074 ns/op
+sum 1M i64 (vectorizable) checked                                  0.257 ms      0.257 ns/op
+                                                                -> +249.0%
+matmul 256x256 i64 wrapping                                        4.095 ms      0.244 ns/op
+matmul 256x256 i64 checked                                         9.552 ms      0.569 ns/op
+                                                                -> +133.2%
+collatz total steps 1..300k wrapping                              27.916 ms     93.054 ns/op
+collatz total steps 1..300k checked                               39.630 ms    132.100 ns/op
+                                                                -> +42.0%
+sieve 10M wrapping                                                 9.630 ms      0.963 ns/op
+sieve 10M checked                                                 10.127 ms      1.013 ns/op
+                                                                -> +5.2%
+poly hash mod p, 1M wrapping                                       2.898 ms      2.898 ns/op
+poly hash mod p, 1M checked                                        3.284 ms      3.284 ns/op
+                                                                -> +13.3%
+## run B
+== recursion guards, fib(32) = 7.05M calls (worst case: almost no work per call)
+fib plain (no guard)                                               4.267 ms      0.605 ns/op
+fib + depth counter in thread_local (inc/dec)                     10.044 ms      1.425 ns/op
+                                                                -> +0.82 ns/call, +135.4%
+fib + depth counter, Drop guard (dec on unwind)                    9.967 ms      1.414 ns/op
+                                                                -> +0.81 ns/call, +133.6%
+fib + depth passed as hidden argument                              5.415 ms      0.768 ns/op
+                                                                -> +0.16 ns/call, +26.9%
+fib + SP check (address of local vs TLS limit)                     8.645 ms      1.226 ns/op
+                                                                -> +0.62 ns/call, +102.6%
+fib + SP check (inline asm SP vs TLS limit)                        6.818 ms      0.967 ns/op
+                                                                -> +0.36 ns/call, +59.8%
+fib + shadow stack push/pop (TLS index)                           10.227 ms      1.451 ns/op
+                                                                -> +0.85 ns/call, +139.7%
+fib + stacker::remaining_stack() check                            11.163 ms      1.584 ns/op
+                                                                -> +0.98 ns/call, +161.6%
+fib + stacker::maybe_grow (heap stack segments)                   11.524 ms      1.635 ns/op
+                                                                -> +1.03 ns/call, +170.1%
+== recursion guards, binary tree sum, 2^22-1 nodes (8.4M calls incl. leaves)
+tree plain                                                         9.898 ms      1.180 ns/op
+tree + depth counter TLS                                          16.088 ms      1.918 ns/op
+                                                                -> +0.74 ns/call, +62.5%
+tree + SP check asm                                               12.202 ms      1.455 ns/op
+                                                                -> +0.27 ns/call, +23.3%
+tree + depth as hidden argument                                   10.299 ms      1.228 ns/op
+                                                                -> +0.05 ns/call, +4.0%
+tree + SP check asm vs global (non-TLS) limit                     10.265 ms      1.224 ns/op
+                                                                -> +0.04 ns/call, +3.7%
+fib + SP check asm vs global (non-TLS) limit                       4.709 ms      0.668 ns/op
+                                                                -> +0.06 ns/call, +10.4%
+tree + stacker::maybe_grow                                        17.094 ms      2.038 ns/op
+                                                                -> +0.86 ns/call, +72.7%
+== happy path: checked fib(32), unwinding vs Result
+fib wrapping (no check, plain i64 return)                          3.565 ms      0.506 ns/op
+fib checked_add, unwind on overflow (returns i64)                  4.822 ms      0.684 ns/op
+                                                                -> +0.18 ns/call, +35.2% vs wrapping
+fib checked_add, Result<i64, Box<E>> (16 B, 2 regs)                7.351 ms      1.043 ns/op
+                                                                -> +0.54 ns/call, +106.2% vs wrapping
+fib checked_add, Result<i64, E{String}> (in memory)                6.653 ms      0.944 ns/op
+                                                                -> +0.44 ns/call, +86.6% vs wrapping
+fib checked, unwind + depth arg (realistic combo)                  4.653 ms      0.660 ns/op
+                                                                -> +0.15 ns/call, +30.5% vs wrapping
+fib checked, Result<i64,Box<E>> + depth arg                        8.927 ms      1.266 ns/op
+                                                                -> +0.76 ns/call, +150.4% vs wrapping
+   size_of Result<i64,Box<E>> = 16, Result<i64,E> = 24, Result<P3,Box<E>> = 32
+P3 chain, unwind (20M non-inlined calls)                          83.535 ms      4.177 ns/op
+P3 chain, Result<P3, Box<E>> + ?                                  91.572 ms      4.579 ns/op
+                                                                -> +0.40 ns/call, +9.6%
+== catch_unwind when nothing is thrown
+plain non-inlined call                                            37.543 ms      0.751 ns/op
+same call inside catch_unwind                                     37.220 ms      0.744 ns/op
+                                                                -> +-0.01 ns per catch_unwind entry
+== cost of one throw (caught)
+panic_any + catch_unwind, silent hook, 0 frames                 1300.639 ms   6503.193 ns/op
+resume_unwind + catch_unwind (no hook call), 0 frames           1156.136 ms   5780.681 ns/op
+resume_unwind through 10 frames with a String each               611.918 ms  30595.923 ns/op
+Err(Box<E>) via ? through 10 frames with a String each             2.234 ms    111.688 ns/op
+resume_unwind through 100 frames with a String each             4788.130 ms 239406.475 ns/op
+Err(Box<E>) via ? through 100 frames with a String each           24.337 ms   1216.844 ns/op
+resume_unwind through 10 frames, no destructors                  336.939 ms  16846.935 ns/op
+resume_unwind through 100 frames, no destructors                2089.016 ms 104450.802 ns/op
+Backtrace::force_capture() (unresolved), at depth ~5               7.460 ms   3730.209 ns/op
+== overflow checks (checked ops that unwind) vs wrapping ops
+sum 1M i64 (vectorizable) wrapping                                 0.076 ms      0.076 ns/op
+sum 1M i64 (vectorizable) checked                                  0.254 ms      0.254 ns/op
+                                                                -> +236.2%
+matmul 256x256 i64 wrapping                                        3.940 ms      0.235 ns/op
+matmul 256x256 i64 checked                                         9.435 ms      0.562 ns/op
+                                                                -> +139.5%
+collatz total steps 1..300k wrapping                              27.725 ms     92.417 ns/op
+collatz total steps 1..300k checked                               45.169 ms    150.562 ns/op
+                                                                -> +62.9%
+sieve 10M wrapping                                                 9.697 ms      0.970 ns/op
+sieve 10M checked                                                 12.531 ms      1.253 ns/op
+                                                                -> +29.2%
+poly hash mod p, 1M wrapping                                       3.049 ms      3.049 ns/op
+poly hash mod p, 1M checked                                        3.088 ms      3.088 ns/op
+                                                                -> +1.3%
+## throw cost by depth
+throw-only resume_unwind, 0 frames no drop                       134.730 ms   6736.519 ns/op
+throw-only resume_unwind, 1 frames no drop                       156.963 ms   7848.163 ns/op
+throw-only resume_unwind, 2 frames no drop                       175.126 ms   8756.310 ns/op
+throw-only resume_unwind, 5 frames no drop                       233.877 ms  11693.871 ns/op
+throw-only resume_unwind, 10 frames no drop                      336.839 ms  16841.963 ns/op
+throw-only resume_unwind, 20 frames no drop                      523.544 ms  26177.204 ns/op
+throw-only resume_unwind, 50 frames no drop                     1097.440 ms  54872.004 ns/op
+throw-only resume_unwind, 100 frames no drop                    2049.308 ms 102465.421 ns/op
+## unguarded deep recursion inside catch_unwind
+
+thread 'main' (30428117) has overflowed its stack
+fatal runtime error: stack overflow, aborting
+exit status 134
+## SP-guarded deep recursion, 8 MiB thread
+caught StackOverflowError
+second time: caught again
+## 1M-node Option<Box<Node>> chain dropped inside catch_unwind (8 MiB main thread)
+
+thread 'main' (30428142) has overflowed its stack
+fatal runtime error: stack overflow, aborting
+exit status 134
+
+## panic = "unwind" vs panic = "abort" (same source, same profile otherwise)
+binary file size: unwind 518,320 B, abort 497,792 B (+4.1%)
+__text: unwind 292,552 B, abort 285,920 B (+2.3%); __eh_frame 31,968 vs 24,792; __gcc_except_tab 6,940 vs 4,584
+abort build (ns/call): fib plain 0.501; tree plain 0.879; fib wrapping 0.492; fib checked (throw path present) 0.585; fib checked Result<i64,Box<E>> 0.678; P3 chain unwind 3.869; P3 chain Result 4.315
+unwind build, same rows, two further runs: fib plain 0.591; tree plain 1.141; fib wrapping 0.523; fib checked 0.669; fib Result<i64,Box<E>> 1.028; P3 unwind 3.786; P3 Result 4.266
+
+## small facts (rustc 1.99.0, facts.rs, run 2026-10-28)
+i64::MIN.checked_rem(-1) = None; i64::MIN.checked_div(-1) = None   (Rust treats MIN % -1 as overflow)
+Vec::<u8>::new().try_reserve(usize::MAX) = Err("memory allocation failed because the computed capacity exceeded the collection's maximum")
+Vec::<u64>::with_capacity(usize::MAX / 4) inside catch_unwind -> ordinary panic "capacity overflow" (printed by the default hook), caught: true
+Drop impl that panics while the thread is already unwinding (resume_unwind) inside catch_unwind ->
+  "panic in a destructor during cleanup" / "thread caused non-unwinding panic. aborting." exit status 134

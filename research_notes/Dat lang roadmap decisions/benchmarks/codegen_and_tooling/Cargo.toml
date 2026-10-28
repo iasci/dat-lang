@@ -1,0 +1,15 @@
+[package]
+name = "bench"
+version = "0.1.0"
+edition = "2021"
+[[bin]]
+name = "noop"
+path = "src/noop.rs"
+[[bin]]
+name = "bench"
+path = "src/main.rs"
+[profile.release]
+opt-level = 3
+[[bin]]
+name = "par"
+path = "src/par.rs"
