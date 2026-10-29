@@ -4,6 +4,7 @@
 - Fewest turns: familiar syntax that agents already know, and compiler errors that state the exact fix.
 - Super fast tooling: type checks and tests should finish in milliseconds, for agents and for the people supervising them.
 - Production speed: programs compile to Rust and should run close to hand-written Rust.
+- Speed trade-offs: aim for within about 4% of hand-written Rust on everyday code (loops, strings, collections, recursion that does work per call), not on worst cases like `fib`, which only calls itself. Don't aim to beat Rust, and don't give up simplicity, exact traces or catchable errors for speed that only a worst case would see.
 - Two run modes: a fast interpreter for development and Rust code generation for production, with the same semantics; every test runs in both.
 - Rust compatibility: every language feature must map directly onto Rust. No GC, no `Rc<RefCell>` everywhere, no inheritance, no runtime reflection.
 - Spec: `reference/` is the language reference
