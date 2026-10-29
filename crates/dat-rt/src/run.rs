@@ -1,6 +1,6 @@
 //! Running a program: a large-stack thread, the uncaught-error report and exit statuses.
 
-use crate::{DatError, Entry, Frame, catch, flush_stdout};
+use crate::{DatError, Entry, Site, StackLimit, flush_stdout};
 use std::io::Write;
 
 /// Runs `f` on a new thread with a `stack`-byte stack and the stack guard set
@@ -41,11 +41,14 @@ pub fn report_uncaught(err: &DatError) {
     let _ = e.flush();
 }
 
-/// The entry point of a compiled program.
-pub fn run_main(main: Entry) -> ! {
+/// The entry point of a compiled program. `sites` maps the generated Rust's
+/// calls and throws to dat locations, for traces, and `limit` is the stack
+/// limit its recursive functions check.
+pub fn run_main(main: Entry, sites: &'static [Site], limit: &'static StackLimit) -> ! {
+    crate::trace::set_sites(sites);
+    crate::stack::set_compiled_limit(limit);
     let code = run_on_dat_thread(crate::STACK_SIZE, || {
-        let root = Frame::ROOT;
-        let code = match catch(|| main(&root, None)) {
+        let code = match crate::throw::run_entry(main) {
             Ok(()) => 0,
             Err(err) => {
                 report_uncaught(&err);

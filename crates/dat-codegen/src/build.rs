@@ -14,6 +14,22 @@ use std::process::{Command, Stdio};
 /// `rust-toolchain.toml`, so both run modes use the same std.
 pub const TOOLCHAIN: &str = "1.99.0";
 
+/// Traces map each native frame's debug location to a dat call, so code for
+/// two different calls must never be shared. These turn off the
+/// optimizations that share it:
+///
+/// - MergeFunctions folds functions whose optimized bodies are equal and
+///   keeps the debug info of one, which would name the wrong function.
+///   Stable rustc can't turn it off, so `RUSTC_BOOTSTRAP` enables the
+///   unstable flag, for the pinned toolchain only.
+/// - SimplifyCFG's hoisting and sinking, and tail merging in code
+///   generation, turn calls in two branches into one call whose location
+///   is neither.
+///
+/// Each costs little: they mostly save code size.
+const TRACE_FLAGS: &[&str] =
+    &["-Zmerge-functions=disabled", "-Cllvm-args=-simplifycfg-sink-common=false -simplifycfg-hoist-common=false -enable-tail-merge=false"];
+
 pub enum Mode {
     Run,
     Test { filter: Option<String>, verbose: bool },
@@ -70,8 +86,8 @@ fn prepare(programs: &[&Program], entry: &Entry, kind: &str) -> Result<Crate, St
     let manifest = format!(
         "[package]\nname = \"{name}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n\
          [dependencies]\ndat-rt = {{ path = {:?} }}\n\n\
-         [profile.release]\nopt-level = 3\ndebug = \"line-tables-only\"\npanic = \"unwind\"\nincremental = true\noverflow-checks = false\n\n\
-         [profile.dat-dist]\ninherits = \"release\"\nincremental = false\ndebug = false\nlto = false\n\n\
+         [profile.release]\nopt-level = 3\ndebug = \"line-tables-only\"\nstrip = false\npanic = \"unwind\"\nincremental = true\noverflow-checks = false\n\n\
+         [profile.dat-dist]\ninherits = \"release\"\nincremental = false\nlto = false\n\n\
          [workspace]\n",
         runtime_dir().display().to_string()
     );
@@ -92,6 +108,7 @@ fn cargo_build(c: &Crate, profile: &str) -> Result<PathBuf, String> {
     }
     // rustc recurses over deeply nested expressions too; give it room.
     cmd.env("CARGO_TARGET_DIR", &target).env("RUSTUP_TOOLCHAIN", TOOLCHAIN).env("RUST_MIN_STACK", (256u64 << 20).to_string());
+    cmd.env("RUSTC_BOOTSTRAP", "1").env("CARGO_ENCODED_RUSTFLAGS", TRACE_FLAGS.join("\u{1f}"));
     let out = cmd.stdin(Stdio::null()).output().map_err(|e| format!("can't run cargo: {e}"))?;
     if !out.status.success() {
         return Err(format!(

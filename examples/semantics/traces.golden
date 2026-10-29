@@ -1,0 +1,295 @@
+# Golden results for traces.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== test
+status: 1
+--- stdout
+FAIL traces.dat:71  tail call A
+  RangeError: boom 1
+    at boom (traces.dat:9:5)
+    at tailA (traces.dat:15:10)
+
+FAIL traces.dat:75  tail call B
+  RangeError: boom 1
+    at boom (traces.dat:9:5)
+    at tailB (traces.dat:19:10)
+
+FAIL traces.dat:79  via a local
+  RangeError: boom 1
+    at boom (traces.dat:9:5)
+    at viaLocal (traces.dat:23:13)
+
+FAIL traces.dat:83  then branch
+  RangeError: boom 1
+    at boom (traces.dat:9:5)
+    at branches (traces.dat:30:9)
+
+FAIL traces.dat:87  else branch
+  RangeError: boom 2
+    at boom (traces.dat:9:5)
+    at branches (traces.dat:32:9)
+
+FAIL traces.dat:91  conditional then
+  RangeError: boom 3
+    at boom (traces.dat:9:5)
+    at cond (traces.dat:38:14)
+
+FAIL traces.dat:95  conditional else
+  RangeError: boom 4
+    at boom (traces.dat:9:5)
+    at cond (traces.dat:38:24)
+
+FAIL traces.dat:99  inlined overflow
+  RangeError: int overflow: 6 * 9223372036854775807
+    at overflowInline (traces.dat:46:10)
+
+FAIL traces.dat:103  inside try
+  RangeError: boom 1
+    at boom (traces.dat:9:5)
+    at tailA (traces.dat:15:10)
+    at inTry (traces.dat:51:12)
+
+FAIL traces.dat:107  unicode column
+  RangeError: boom 1
+    at boom (traces.dat:9:5)
+    at unicode (traces.dat:58:31)
+
+FAIL traces.dat:111  void tail
+  RangeError: boom 1
+    at boom (traces.dat:9:5)
+    at voidTail (traces.dat:63:3)
+  output:
+    before
+
+FAIL traces.dat:115  and tail
+  RangeError: boom 1
+    at boom (traces.dat:9:5)
+    at andTail (traces.dat:67:15)
+
+FAIL traces.dat:213  twice
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at twice (traces.dat:126:21)
+
+FAIL traces.dat:214  nested
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at nested (traces.dat:130:22)
+
+FAIL traces.dat:215  in a loop
+  assert(inLoop() == 0)
+    left:  95
+    right: 0
+
+FAIL traces.dat:216  in a loop condition
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at inCondition (traces.dat:147:10)
+
+FAIL traces.dat:217  wrong clause
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at wrongClause (traces.dat:155:12)
+
+FAIL traces.dat:218  throw in catch
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at throwInCatch (traces.dat:165:12)
+
+FAIL traces.dat:219  rethrow
+  RangeError: bad 3
+    at rethrowIt (traces.dat:173:5)
+
+FAIL traces.dat:220  mutual recursion
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at isEven (traces.dat:179:12)
+    at isOdd (traces.dat:188:10)
+    at isEven (traces.dat:181:10)
+    at isOdd (traces.dat:188:10)
+    at isEven (traces.dat:181:10)
+    at isOdd (traces.dat:188:10)
+    at isEven (traces.dat:181:10)
+
+FAIL traces.dat:221  deep
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at deep (traces.dat:193:12)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+
+FAIL traces.dat:222  deep 31
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at deep (traces.dat:193:12)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+
+FAIL traces.dat:223  deep 64
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at deep (traces.dat:193:12)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+    at deep (traces.dat:195:10)
+
+FAIL traces.dat:224  template
+  RangeError: bad 3
+    at check (traces.dat:120:5)
+    at inTemplate (traces.dat:199:36)
+
+FAIL traces.dat:225  never
+  AssertionError: gave up
+    at failing (traces.dat:203:3)
+    at callsFailing (traces.dat:208:5)
+
+25 failed, 0 passed (<ms>)

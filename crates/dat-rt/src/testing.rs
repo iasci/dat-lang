@@ -1,6 +1,6 @@
 //! The `dat test` report, shared by both run modes (`reference/20-testing.md`).
 
-use crate::{DatError, Entry, Frame, Loc, capture_begin, capture_end, flush_stdout};
+use crate::{DatError, Entry, Loc, Site, StackLimit, capture_begin, capture_end, flush_stdout};
 use std::fmt::Write as _;
 use std::time::Duration;
 
@@ -93,8 +93,11 @@ pub struct CompiledTest {
     pub run: Entry,
 }
 
-/// The entry point of a compiled test binary. Takes `--filter <text>` and `--verbose`.
-pub fn main(tests: &[CompiledTest]) -> ! {
+/// The entry point of a compiled test binary. Takes `--filter <text>` and
+/// `--verbose`. `sites` and `limit` are as for [`crate::run_main`].
+pub fn main(tests: &[CompiledTest], sites: &'static [Site], limit: &'static StackLimit) -> ! {
+    crate::trace::set_sites(sites);
+    crate::stack::set_compiled_limit(limit);
     let mut filter = None;
     let mut verbose = false;
     let mut args = std::env::args().skip(1);
@@ -112,15 +115,7 @@ pub fn main(tests: &[CompiledTest]) -> ! {
     let code = crate::run_on_dat_thread(crate::STACK_SIZE, || {
         let infos: Vec<TestInfo> = selected.iter().map(|t| TestInfo { name: t.name.to_string(), frame: t.frame, loc: t.loc }).collect();
         let start = std::time::Instant::now();
-        let outcomes: Vec<Outcome> = selected
-            .iter()
-            .map(|t| {
-                run_one(|| {
-                    let root = Frame::ROOT;
-                    crate::catch(|| (t.run)(&root, None))
-                })
-            })
-            .collect();
+        let outcomes: Vec<Outcome> = selected.iter().map(|t| run_one(|| crate::throw::run_entry(t.run))).collect();
         report(&infos, &outcomes, start.elapsed(), verbose)
     });
     crate::exit_with(code)

@@ -13,6 +13,17 @@ pub enum ErrorKind {
 }
 
 impl ErrorKind {
+    /// In declaration order, so `kind as usize` indexes it.
+    pub const ALL: [ErrorKind; 7] = [
+        ErrorKind::Error,
+        ErrorKind::ValueError,
+        ErrorKind::RangeError,
+        ErrorKind::KeyError,
+        ErrorKind::TypeError,
+        ErrorKind::AssertionError,
+        ErrorKind::StackOverflowError,
+    ];
+
     pub fn name(self) -> &'static str {
         match self {
             ErrorKind::Error => "Error",

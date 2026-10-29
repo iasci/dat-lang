@@ -3,10 +3,12 @@
 //! One Rust function per dat function, no macros, and every runtime-checked
 //! operation calls dat-rt with a `&'static Loc`. Runtime errors unwind; a
 //! `try` block becomes a closure run by `dat_rt::catch`, and `return`,
-//! `break` and `continue` leave it as a `dat_rt::Flow` value. Every function
-//! takes its caller's `dat_rt::Frame` record and the call's location as its
-//! last two arguments, and builds its own record from them; a throw walks the
-//! records to build a dat-only trace.
+//! `break` and `continue` leave it as a `dat_rt::Flow` value.
+//!
+//! Functions keep plain Rust signatures. For traces, the crate ends with a
+//! table of every call and throw: its line and column in this `main.rs`, as
+//! debug info reports them, and its dat location. dat-rt reads the native
+//! stack at a throw and maps it through the table (see `dat_rt::Trace`).
 
 #![forbid(unsafe_code)]
 
@@ -44,7 +46,7 @@ pub fn emit_crate(programs: &[&ir::Program], entry: &Entry) -> String {
     match entry {
         Entry::Run => {
             let main = programs[0].main.expect("checked: run needs main");
-            let _ = writeln!(out, "    dat_rt::run_main(p0::{})", fn_name(programs[0], main));
+            let _ = writeln!(out, "    dat_rt::run_main(p0::{}, &SITES, &STACK_LIMIT)", fn_name(programs[0], main));
         }
         Entry::Test => {
             out.push_str("    let tests: &[dat_rt::testing::CompiledTest] = &[\n");
@@ -63,10 +65,41 @@ pub fn emit_crate(programs: &[&ir::Program], entry: &Entry) -> String {
                     );
                 }
             }
-            out.push_str("    ];\n    dat_rt::testing::main(tests)\n");
+            out.push_str("    ];\n    dat_rt::testing::main(tests, &SITES, &STACK_LIMIT)\n");
         }
     }
-    out.push_str("}\n");
+    out.push_str("}\n\nstatic STACK_LIMIT: dat_rt::StackLimit = dat_rt::StackLimit::new();\n");
+    site_table(&out)
+}
+
+/// Marks a call or throw in emitted text: `SITE`, the program and location
+/// index, `SITE_END`. Neither character can occur in generated Rust, since
+/// string literals are written escaped.
+const SITE: char = '\u{1}';
+const SITE_END: char = '\u{2}';
+
+/// Removes the site marks from `text` and appends the table of where they
+/// were. Columns are 1-based byte offsets, as rustc writes them to debug info.
+fn site_table(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 4096);
+    let mut sites: Vec<(usize, usize, String)> = Vec::new();
+    for (n, line) in text.split_inclusive('\n').enumerate() {
+        let start = out.len();
+        let mut rest = line;
+        while let Some(i) = rest.find(SITE) {
+            out.push_str(&rest[..i]);
+            let end = rest[i..].find(SITE_END).expect("site marks come in pairs") + i;
+            sites.push((n + 1, out.len() - start + 1, rest[i + 1..end].to_string()));
+            rest = &rest[end + SITE_END.len_utf8()..];
+        }
+        out.push_str(rest);
+    }
+    sites.sort();
+    let _ = writeln!(out, "\nstatic SITES: [dat_rt::Site; {}] = [", sites.len());
+    for (line, col, loc) in &sites {
+        let _ = writeln!(out, "    dat_rt::Site {{ line: {line}, col: {col}, loc: &{loc} }},");
+    }
+    out.push_str("];\n");
     out
 }
 
@@ -101,7 +134,7 @@ fn is_copy(t: Type) -> bool {
 
 /// Tests are left out unless the crate runs them, as in production builds.
 fn emit_program(index: usize, p: &ir::Program, with_tests: bool) -> String {
-    let mut g = Gen { p, locs: HashMap::new(), loc_order: Vec::new(), func: String::new() };
+    let mut g = Gen { p, index, locs: HashMap::new(), loc_order: Vec::new(), func: String::new(), calls: false };
     let mut funcs = String::new();
     for (i, f) in p.functions.iter().enumerate() {
         if !with_tests && p.tests.iter().any(|t| t.func.0 as usize == i) {
@@ -115,7 +148,7 @@ fn emit_program(index: usize, p: &ir::Program, with_tests: bool) -> String {
     for (i, l) in g.loc_order.iter().enumerate() {
         let _ = writeln!(
             out,
-            "    static L{i}: dat_rt::Loc = dat_rt::Loc {{ file: FILE, func: {:?}, line: {}, col: {} }};",
+            "    pub static L{i}: dat_rt::Loc = dat_rt::Loc {{ file: FILE, func: {:?}, line: {}, col: {} }};",
             l.1, l.0.line, l.0.col
         );
     }
@@ -132,11 +165,15 @@ fn emit_program(index: usize, p: &ir::Program, with_tests: bool) -> String {
 
 struct Gen<'p> {
     p: &'p ir::Program,
+    /// The program's index in the crate, which names its module.
+    index: usize,
     locs: HashMap<(u32, u32), usize>,
     /// Each location and the dat function it's in.
     loc_order: Vec<(ir::Loc, String)>,
     /// The dat function being emitted.
     func: String,
+    /// Whether it calls dat functions, so its `void` returns need `no_tail_call`.
+    calls: bool,
 }
 
 /// Where `return`, `break` and `continue` go from the code being emitted.
@@ -152,13 +189,19 @@ struct Ctx {
 }
 
 impl<'p> Gen<'p> {
-    fn loc(&mut self, l: ir::Loc) -> String {
+    fn loc_index(&mut self, l: ir::Loc) -> usize {
         let n = self.locs.len();
-        let i = *self.locs.entry((l.line, l.col)).or_insert_with(|| {
+        *self.locs.entry((l.line, l.col)).or_insert_with(|| {
             self.loc_order.push((l, self.func.clone()));
             n
-        });
-        format!("&L{i}")
+        })
+    }
+
+    /// The mark to put right before the call at `l`, and the reference to
+    /// its location.
+    fn site(&mut self, l: ir::Loc) -> (String, String) {
+        let i = self.loc_index(l);
+        (format!("{SITE}p{}::L{i}{SITE_END}", self.index), format!("&L{i}"))
     }
 
     fn local(&self, f: &ir::Function, l: ir::LocalId) -> String {
@@ -169,26 +212,30 @@ impl<'p> Gen<'p> {
 
     fn function(&mut self, id: ir::FuncId, f: &ir::Function) -> String {
         self.func = f.name.clone();
-        let mut params: Vec<String> =
+        self.calls = block_calls(&f.body);
+        let params: Vec<String> =
             (0..f.params).map(|i| format!("{}: {}", self.local(f, ir::LocalId(i)), rust_type(f.locals[i as usize].ty))).collect();
-        params.push("__up: &dat_rt::Frame<'_>".to_string());
-        params.push("__at: Option<&'static dat_rt::Loc>".to_string());
         let ret = match f.ret {
             Type::Void => String::new(),
             t => format!(" -> {}", rust_type(t)),
         };
         let mut s = String::new();
         let _ = writeln!(s, "pub fn {}({}){ret} {{", fn_name(self.p, id), params.join(", "));
-        if f.recursive && !no_stack_guard() {
-            s.push_str("    dat_rt::stack_check(__up, __at);\n");
-        }
-        s.push_str("    let __f = &dat_rt::Frame { parent: Some(__up), at: __at };\n");
         let ctx = Ctx { in_closure: false, lp: None, any_loop: false };
         let mut loops = 0;
-        let body = self.block(f, &f.body, ctx, 1, &mut loops);
-        s.push_str(&body);
-        if f.ret != Type::Void {
-            s.push_str("    dat_rt::unreachable()\n");
+        // The stack check goes right before the first statement that calls,
+        // so a call that returns early, like a recursion's base case, skips it.
+        let guard = f.recursive && !no_stack_guard();
+        let split = if guard { f.body.iter().position(|st| block_calls(std::slice::from_ref(st))).unwrap_or(0) } else { 0 };
+        s.push_str(&self.block(f, &f.body[..split], ctx, 1, &mut loops));
+        if guard {
+            s.push_str("    dat_rt::stack_check(&super::STACK_LIMIT);\n");
+        }
+        s.push_str(&self.block(f, &f.body[split..], ctx, 1, &mut loops));
+        match f.ret {
+            Type::Void if self.calls => s.push_str("    dat_rt::no_tail_call();\n"),
+            Type::Void => {}
+            _ => s.push_str("    dat_rt::unreachable()\n"),
         }
         s.push_str("}\n");
         s
@@ -263,23 +310,36 @@ impl<'p> Gen<'p> {
             }
             Stmt::Return(e) => {
                 let v = e.as_ref().map(|e| self.expr(f, e));
-                let code = self.return_code(ctx, v.as_deref());
+                let tail = e.as_ref().is_some_and(|e| tail_may_call(f, e));
+                let code = self.return_code(ctx, v.as_deref(), tail);
                 let _ = writeln!(out, "{ind}{code}");
             }
-            Stmt::Throw(e, loc) => {
-                let v = self.expr(f, e);
-                let l = self.loc(*loc);
-                let _ = writeln!(out, "{ind}dat_rt::throw_new({v}, {l}, __f);");
-            }
+            Stmt::Throw(e, loc) => match &e.kind {
+                ExprKind::NewError { kind, message } => {
+                    let v = self.expr(f, message);
+                    let (m, l) = self.site(*loc);
+                    let _ = writeln!(out, "{ind}{m}dat_rt::throw_error(dat_rt::ErrorKind::{}, {v}, {l});", kind_name(*kind));
+                }
+                _ => {
+                    let v = self.expr(f, e);
+                    let (m, l) = self.site(*loc);
+                    let _ = writeln!(out, "{ind}{m}dat_rt::throw_new({v}, {l});");
+                }
+            },
             Stmt::Try { body, catches } => self.try_stmt(f, body, catches, ctx, depth, loops, out),
         }
     }
 
-    fn return_code(&self, ctx: Ctx, v: Option<&str>) -> String {
+    /// `tail_call` says the value may be a dat call's result as it is. Such a
+    /// return, and a `void` return from a function that calls, gets
+    /// `dat_rt::no_tail_call` first.
+    fn return_code(&self, ctx: Ctx, v: Option<&str>, tail_call: bool) -> String {
         match (ctx.in_closure, v) {
             (true, Some(v)) => format!("return dat_rt::Flow::Return({v});"),
             (true, None) => "return dat_rt::Flow::Return(());".to_string(),
+            (false, Some(v)) if tail_call => format!("{{ let __r = {v}; dat_rt::no_tail_call(); return __r; }}"),
             (false, Some(v)) => format!("return {v};"),
+            (false, None) if self.calls => "dat_rt::no_tail_call(); return;".to_string(),
             (false, None) => "return;".to_string(),
         }
     }
@@ -318,7 +378,19 @@ impl<'p> Gen<'p> {
             t => rust_type(t),
         };
         let inner = Ctx { in_closure: true, lp: None, any_loop: ctx.any_loop };
-        let _ = writeln!(out, "{ind}match dat_rt::catch(|| -> dat_rt::Flow<{ret}> {{");
+        // The error types the clauses handle; a throw of one of them skips the trace.
+        let typed: Option<Vec<String>> = catches
+            .iter()
+            .map(|c| match c.filter {
+                ir::CatchFilter::Is(t) => Some(format!("dat_rt::ErrorKind::{}", t.name())),
+                _ => None,
+            })
+            .collect();
+        let kinds = match typed {
+            Some(k) => format!("&[{}]", k.join(", ")),
+            None => "dat_rt::ALL_ERRORS".to_string(),
+        };
+        let _ = writeln!(out, "{ind}match dat_rt::catch({kinds}, || -> dat_rt::Flow<{ret}> {{");
         out.push_str(&self.block(f, body, inner, depth + 1, loops));
         let _ = writeln!(out, "{ind}    dat_rt::Flow::Normal");
         let _ = writeln!(out, "{ind}}}) {{");
@@ -326,8 +398,8 @@ impl<'p> Gen<'p> {
         // A `never` function can't return, so its try blocks never give `Return`.
         let on_return = match f.ret {
             Type::Never => "dat_rt::unreachable()".to_string(),
-            Type::Void => self.return_code(ctx, None),
-            _ => self.return_code(ctx, Some("__v")),
+            Type::Void => self.return_code(ctx, None, false),
+            _ => self.return_code(ctx, Some("__v"), false),
         };
         let _ = writeln!(out, "{ind}    Ok(dat_rt::Flow::Return(__v)) => {{ {on_return} }}");
         let _ = writeln!(out, "{ind}    Ok(dat_rt::Flow::Break) => {{ {} }}", self.break_code(ctx));
@@ -372,11 +444,9 @@ impl<'p> Gen<'p> {
                 if is_copy(e.ty) { name } else { format!("{name}.clone()") }
             }
             ExprKind::Call { func, args, loc } => {
-                let l = self.loc(*loc);
-                let mut vals: Vec<String> = args.iter().map(|a| self.expr(f, a)).collect();
-                vals.push("__f".to_string());
-                vals.push(format!("Some({l})"));
-                format!("{}({})", fn_name(self.p, *func), vals.join(", "))
+                let (m, _) = self.site(*loc);
+                let vals: Vec<String> = args.iter().map(|a| self.expr(f, a)).collect();
+                format!("{m}{}({})", fn_name(self.p, *func), vals.join(", "))
             }
             ExprKind::IntArith { op, lhs, rhs, loc } => {
                 let name = match op {
@@ -386,13 +456,13 @@ impl<'p> Gen<'p> {
                     ir::IntOp::Rem => "rem",
                 };
                 let (a, b) = (self.expr(f, lhs), self.expr(f, rhs));
-                let l = self.loc(*loc);
-                format!("dat_rt::int::{name}({a}, {b}, {l}, __f)")
+                let (m, l) = self.site(*loc);
+                format!("{m}dat_rt::int::{name}({a}, {b}, {l})")
             }
             ExprKind::IntNeg { arg, loc } => {
                 let a = self.expr(f, arg);
-                let l = self.loc(*loc);
-                format!("dat_rt::int::neg({a}, {l}, __f)")
+                let (m, l) = self.site(*loc);
+                format!("{m}dat_rt::int::neg({a}, {l})")
             }
             ExprKind::Compare { op, lhs, rhs } => {
                 let (a, b) = (self.expr(f, lhs), self.expr(f, rhs));
@@ -429,15 +499,15 @@ impl<'p> Gen<'p> {
                 format!("{{ let __n: {} = {v}; __n }}", rust_type(e.ty))
             }
             ExprKind::Fail { message, loc } => {
-                let m = self.expr(f, message);
-                let l = self.loc(*loc);
-                format!("dat_rt::fail({m}, {l}, __f)")
+                let v = self.expr(f, message);
+                let (m, l) = self.site(*loc);
+                format!("{m}dat_rt::fail({v}, {l})")
             }
         }
     }
 
     fn assert(&mut self, f: &ir::Function, a: &ir::Assert) -> String {
-        let l = self.loc(a.loc);
+        let (mark, l) = self.site(a.loc);
         let mut s = String::from("{ ");
         let (cond, sides) = match &a.cond {
             ir::AssertCond::Plain(c) => {
@@ -464,8 +534,59 @@ impl<'p> Gen<'p> {
             }
             None => "None".to_string(),
         };
-        let _ = write!(s, "if !{cond} {{ dat_rt::assert_failed({:?}, {:?}, {sides}, {msg}, {l}, __f) }} }}", a.src, a.cond_src);
+        let _ = write!(s, "if !{cond} {{ {mark}dat_rt::assert_failed({:?}, {:?}, {sides}, {msg}, {l}) }} }}", a.src, a.cond_src);
         s
+    }
+}
+
+/// Whether returning `e` could return a dat call's result as it is, which
+/// would let LLVM make that call a tail call. A parameter that's never
+/// assigned holds the caller's argument, and arithmetic and comparisons work
+/// on the result, so they can't.
+fn tail_may_call(f: &ir::Function, e: &ir::Expr) -> bool {
+    match &e.kind {
+        ExprKind::Call { .. } => true,
+        ExprKind::Local(l) => (l.0 >= f.params) || f.locals[l.0 as usize].reassigned,
+        ExprKind::Cond { then, els, .. } => tail_may_call(f, then) || tail_may_call(f, els),
+        ExprKind::And(_, b) | ExprKind::Or(_, b) => tail_may_call(f, b),
+        _ => false,
+    }
+}
+
+/// Whether a block calls a dat function.
+fn block_calls(b: &[Stmt]) -> bool {
+    b.iter().any(|s| match s {
+        Stmt::Let(_, e) | Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Throw(e, _) | Stmt::Return(Some(e)) => expr_calls(e),
+        Stmt::If(c, t, e) => expr_calls(c) || block_calls(t) || block_calls(e),
+        Stmt::Loop { cond, body, step } => cond.as_ref().is_some_and(expr_calls) || block_calls(body) || block_calls(step),
+        Stmt::Try { body, catches } => block_calls(body) || catches.iter().any(|c| block_calls(&c.body)),
+        Stmt::Break | Stmt::Continue | Stmt::Return(None) => false,
+    })
+}
+
+fn expr_calls(e: &ir::Expr) -> bool {
+    match &e.kind {
+        ExprKind::Call { .. } => true,
+        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::Str(_) | ExprKind::Local(_) => false,
+        ExprKind::IntArith { lhs, rhs, .. } | ExprKind::Compare { lhs, rhs, .. } => expr_calls(lhs) || expr_calls(rhs),
+        ExprKind::And(a, b) | ExprKind::Or(a, b) => expr_calls(a) || expr_calls(b),
+        ExprKind::Cond { cond, then, els } => expr_calls(cond) || expr_calls(then) || expr_calls(els),
+        ExprKind::Concat(parts) => parts.iter().any(expr_calls),
+        ExprKind::IntNeg { arg: a, .. }
+        | ExprKind::Not(a)
+        | ExprKind::ToStr(a)
+        | ExprKind::ErrorMessage(a)
+        | ExprKind::Print(a)
+        | ExprKind::Diverge(a)
+        | ExprKind::NewError { message: a, .. }
+        | ExprKind::Fail { message: a, .. } => expr_calls(a),
+        ExprKind::Assert(a) => {
+            let cond = match &a.cond {
+                ir::AssertCond::Plain(c) => expr_calls(c),
+                ir::AssertCond::Compare { lhs, rhs, .. } => expr_calls(lhs) || expr_calls(rhs),
+            };
+            cond || a.message.as_ref().is_some_and(expr_calls)
+        }
     }
 }
 

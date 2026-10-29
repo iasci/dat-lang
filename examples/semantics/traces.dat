@@ -1,0 +1,225 @@
+// Traces in compiled code come from debug info, so these are the shapes that
+// optimized Rust could get wrong: tail calls, functions whose optimized code
+// is the same, calls in both branches, inlined helpers, try closures, a
+// non-ASCII string before a call, rethrow through a clause that doesn't
+// match, a throw in a catch body, `throw e`, mutual recursion, and traces
+// deeper than the 32 frames kept at each end.
+function boom(n: int): int {
+  if (n > 0) {
+    throw RangeError { message: `boom ${n}` };
+  }
+  return n;
+}
+
+function tailA(n: int): int {
+  return boom(n);
+}
+
+function tailB(n: int): int {
+  return boom(n);
+}
+
+function viaLocal(n: int): int {
+  const r = boom(n);
+  return r;
+}
+
+function branches(c: bool): int {
+  let x = 0;
+  if (c) {
+    x = boom(1);
+  } else {
+    x = boom(2);
+  }
+  return x;
+}
+
+function cond(c: bool): int {
+  return c ? boom(3) : boom(4);
+}
+
+function small(n: int): int {
+  return n + 1;
+}
+
+function overflowInline(n: int): int {
+  return small(n) * 9223372036854775807;
+}
+
+function inTry(n: int): int {
+  try {
+    return tailA(n);
+  } catch (e: TypeError) {
+    return 0;
+  }
+}
+
+function unicode(n: int): string {
+  return "héllo wörld ✓" + `${boom(n)}`;
+}
+
+function voidTail(n: int): void {
+  print("before");
+  boom(n);
+}
+
+function andTail(c: bool, n: int): bool {
+  return c && boom(n) > 0;
+}
+
+test "tail call A" {
+  assert(tailA(1) == 0);
+}
+
+test "tail call B" {
+  assert(tailB(1) == 0);
+}
+
+test "via a local" {
+  assert(viaLocal(1) == 0);
+}
+
+test "then branch" {
+  assert(branches(true) == 0);
+}
+
+test "else branch" {
+  assert(branches(false) == 0);
+}
+
+test "conditional then" {
+  assert(cond(true) == 0);
+}
+
+test "conditional else" {
+  assert(cond(false) == 0);
+}
+
+test "inlined overflow" {
+  assert(overflowInline(5) == 0);
+}
+
+test "inside try" {
+  assert(inTry(1) == 0);
+}
+
+test "unicode column" {
+  assert(unicode(1) == "");
+}
+
+test "void tail" {
+  voidTail(1);
+}
+
+test "and tail" {
+  assert(andTail(true, 1));
+}
+
+function check(n: int): int {
+  if (n == 3) {
+    throw RangeError { message: `bad ${n}` };
+  }
+  return n;
+}
+
+function twice(): int {
+  return check(1) + check(3);
+}
+
+function nested(): int {
+  return check(check(check(3)));
+}
+
+function inLoop(): int {
+  let total = 0;
+  for (let i = 0; i < 10; i++) {
+    if (i % 2 == 0) {
+      total = total + check(i);
+    } else {
+      total = total + check(i + 10);
+    }
+  }
+  return total;
+}
+
+function inCondition(): int {
+  let i = 0;
+  while (check(i) < 5) {
+    i++;
+  }
+  return i;
+}
+
+function wrongClause(): int {
+  try {
+    return check(3);
+  } catch (e: TypeError) {
+    return 0;
+  }
+}
+
+function throwInCatch(): int {
+  try {
+    return check(3);
+  } catch (e: RangeError) {
+    return check(3) + 1;
+  }
+}
+
+function rethrowIt(): int {
+  try {
+    return check(3);
+  } catch (e: RangeError) {
+    throw e;
+  }
+}
+
+function isEven(n: int): bool {
+  if (n == 0) {
+    return check(3) == 3;
+  }
+  return isOdd(n - 1);
+}
+
+function isOdd(n: int): bool {
+  if (n == 0) {
+    return false;
+  }
+  return isEven(n - 1);
+}
+
+function deep(n: int): int {
+  if (n == 0) {
+    return check(3);
+  }
+  return deep(n - 1) + 1;
+}
+
+function inTemplate(): string {
+  return `value: ${check(2)} and ${check(3)}`;
+}
+
+function failing(): never {
+  fail("gave up");
+}
+
+function callsFailing(n: int): int {
+  if (n > 0) {
+    failing();
+  }
+  return n;
+}
+
+test "twice" { assert(twice() == 0); }
+test "nested" { assert(nested() == 0); }
+test "in a loop" { assert(inLoop() == 0); }
+test "in a loop condition" { assert(inCondition() == 0); }
+test "wrong clause" { assert(wrongClause() == 0); }
+test "throw in catch" { assert(throwInCatch() == 0); }
+test "rethrow" { assert(rethrowIt() == 0); }
+test "mutual recursion" { assert(isEven(6)); }
+test "deep" { assert(deep(100) == 0); }
+test "deep 31" { assert(deep(31) == 0); }
+test "deep 64" { assert(deep(64) == 0); }
+test "template" { assert(inTemplate() == ""); }
+test "never" { assert(callsFailing(1) == 0); }

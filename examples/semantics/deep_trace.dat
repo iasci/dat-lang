@@ -1,0 +1,12 @@
+// An uncaught error 100,000 calls deep: the trace keeps 32 frames at each
+// end and counts the calls in between, the same in both modes.
+function depth(n: int): int {
+  if (n == 0) {
+    throw RangeError { message: "bottom" };
+  }
+  return 1 + depth(n - 1);
+}
+
+function main(): void {
+  print(depth(100_000));
+}

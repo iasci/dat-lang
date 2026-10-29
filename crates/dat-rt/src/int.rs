@@ -4,7 +4,7 @@
 //! `try_*` functions are for the interpreter. The others are for generated
 //! code: they take the operation's location and throw.
 
-use crate::{DatError, Frame, Loc, throw};
+use crate::{DatError, Loc, throw};
 
 #[inline]
 pub fn try_add(a: i64, b: i64) -> Result<i64, Box<DatError>> {
@@ -37,42 +37,42 @@ pub fn try_neg(a: i64) -> Result<i64, Box<DatError>> {
 }
 
 #[inline(always)]
-pub fn add(a: i64, b: i64, loc: &'static Loc, frame: &Frame<'_>) -> i64 {
+pub fn add(a: i64, b: i64, loc: &'static Loc) -> i64 {
     match a.checked_add(b) {
         Some(v) => v,
-        None => throw(DatError::int_overflow(a, "+", b), loc, frame),
+        None => throw(DatError::int_overflow(a, "+", b), loc),
     }
 }
 
 #[inline(always)]
-pub fn sub(a: i64, b: i64, loc: &'static Loc, frame: &Frame<'_>) -> i64 {
+pub fn sub(a: i64, b: i64, loc: &'static Loc) -> i64 {
     match a.checked_sub(b) {
         Some(v) => v,
-        None => throw(DatError::int_overflow(a, "-", b), loc, frame),
+        None => throw(DatError::int_overflow(a, "-", b), loc),
     }
 }
 
 #[inline(always)]
-pub fn mul(a: i64, b: i64, loc: &'static Loc, frame: &Frame<'_>) -> i64 {
+pub fn mul(a: i64, b: i64, loc: &'static Loc) -> i64 {
     match a.checked_mul(b) {
         Some(v) => v,
-        None => throw(DatError::int_overflow(a, "*", b), loc, frame),
+        None => throw(DatError::int_overflow(a, "*", b), loc),
     }
 }
 
 #[inline(always)]
-pub fn rem(a: i64, b: i64, loc: &'static Loc, frame: &Frame<'_>) -> i64 {
+pub fn rem(a: i64, b: i64, loc: &'static Loc) -> i64 {
     match try_rem(a, b) {
         Ok(v) => v,
-        Err(e) => throw(e, loc, frame),
+        Err(e) => throw(e, loc),
     }
 }
 
 #[inline(always)]
-pub fn neg(a: i64, loc: &'static Loc, frame: &Frame<'_>) -> i64 {
+pub fn neg(a: i64, loc: &'static Loc) -> i64 {
     match a.checked_neg() {
         Some(v) => v,
-        None => throw(DatError::int_neg_overflow(a), loc, frame),
+        None => throw(DatError::int_neg_overflow(a), loc),
     }
 }
 
