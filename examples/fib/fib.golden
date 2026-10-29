@@ -1,0 +1,108 @@
+# Golden results for fib.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 0
+--- stdout
+fib(25) = 75025
+fibIter(92) = 7540113804746346429
+fibIter(93) overflows int: caught RangeError
+
+=== test
+status: 0
+--- stdout
+0 failed, 4 passed (<ms>)
+
+=== test --filter overflow
+status: 0
+--- stdout
+0 failed, 1 passed (<ms>)
+
+=== test --verbose
+status: 0
+--- stdout
+PASS fib.dat:41  small values
+PASS fib.dat:48  largest value that fits in int
+PASS fib.dat:52  overflow is a catchable RangeError
+PASS fib.dat:61  negative input is rejected
+0 failed, 4 passed (<ms>)
+
+=== test --filter nothing-matches
+status: 2
+--- stderr
+dat test: no test name contains `nothing-matches`
+
+=== ir
+status: 0
+--- stdout
+program "fib.dat"
+main = fn2
+test "small values" = fn3 @41:1
+test "largest value that fits in int" = fn4 @48:1
+test "overflow is a catchable RangeError" = fn5 @52:1
+test "negative input is rejected" = fn6 @61:1
+
+fn0 "fib"(%0 n: int) -> int recursive @4:1
+  if (lt.int %0 2)
+    return %0
+  return (add.int @8:10 (call fn0 @8:10 (sub.int @8:14 %0 1)) (call fn0 @8:23 (sub.int @8:27 %0 2)))
+
+fn1 "fibIter"(%0 n: int) -> int @13:1
+  local %1 prev: int mut
+  local %2 curr: int mut
+  local %3 i: int mut
+  local %4 next: int
+  if (lt.int %0 0)
+    throw @15:5 (new RangeError (concat "fibIter: n must be >= 0, got " (str.int %0)))
+  if (lt.int %0 2)
+    return %0
+  let %1 = 0
+  let %2 = 1
+  let %3 = 2
+  loop while (le.int %3 %0)
+    let %4 = (add.int @23:18 %1 %2)
+    set %1 = %2
+    set %2 = %4
+  step
+    set %3 = (add.int @22:27 %3 1)
+  return %2
+
+fn2 "main"() -> void @30:1
+  local %0 e: RangeError
+  (print (concat "fib(25) = " (str.int (call fn0 @31:22 25))))
+  (print (concat "fibIter(92) =" " " (str.int (call fn1 @32:26 92))))
+  try
+    (print (str.int (call fn1 @34:11 93)))
+    (print "not reached")
+  catch RangeError -> %0
+    (print "fibIter(93) overflows int: caught RangeError")
+
+fn3 "test \"small values\""() -> void @41:1
+  (assert @42:3 (== (call fn0 @42:10 0) 0))
+  (assert @43:3 (== (call fn0 @43:10 1) 1))
+  (assert @44:3 (== (call fn0 @44:10 10) 55))
+  (assert @45:3 (== (call fn1 @45:10 10) (call fn0 @45:25 10)))
+
+fn4 "test \"largest value that fits in int\""() -> void @48:1
+  (assert @49:3 (== (call fn1 @49:10 92) 7540113804746346429))
+
+fn5 "test \"overflow is a catchable RangeError\""() -> void @52:1
+  local %0 f: int
+  local %1 e: RangeError
+  try
+    let %0 = (call fn1 @54:15 93)
+    (fail @55:5 (concat "expected a RangeError, got " (str.int %0)))
+  catch RangeError -> %1
+    (assert @57:5 (!= (message %1) ""))
+
+fn6 "test \"negative input is rejected\""() -> void @61:1
+  local %0 f: int
+  local %1 e: RangeError
+  try
+    let %0 = (call fn1 @63:15 -1)
+    (fail @64:5 (concat "expected a RangeError, got " (str.int %0)))
+  catch RangeError -> %1
+    (assert @66:5 (== (message %1) "fibIter: n must be >= 0, got -1"))

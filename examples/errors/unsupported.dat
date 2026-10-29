@@ -1,0 +1,14 @@
+// Constructs from later milestones get one clear "not supported yet" error.
+
+struct Point {
+  x: int;
+  y: int;
+}
+
+function main(): void {
+  const xs = [1, 2, 3];
+  const ratio = 0.5;
+  for (const x of xs) {
+    print(x);
+  }
+}

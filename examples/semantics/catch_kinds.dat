@@ -1,0 +1,46 @@
+// Which clause catches what, and what `catch (e: Error)` turns an error into.
+
+function divide(a: int, b: int): int {
+  return a % b;
+}
+
+function check(n: int): void {
+  assert(n < 10, `n is too big: ${n}`);
+}
+
+function main(): void {
+  try {
+    print(divide(7, 0));
+  } catch (e: Error) {
+    print(e.message);
+  }
+  try {
+    check(12);
+  } catch (e: RangeError) {
+    print("not this one");
+  } catch (e) {
+    print(`untyped catch: ${e.message}`);
+  }
+  try {
+    try {
+      fail("deep");
+    } catch (e: RangeError) {
+      print("not this one either");
+    }
+  } catch (e: AssertionError) {
+    print(`outer caught: ${e}`);
+  }
+  try {
+    throw StackOverflowError { message: "made by hand" };
+  } catch (e: StackOverflowError) {
+    print(e.toString());
+  }
+  let changed = 0;
+  try {
+    changed = 1;
+    print(divide(1, 0));
+    changed = 2;
+  } catch (e: RangeError) {
+    print(`changes before the error stay: ${changed}`);
+  }
+}

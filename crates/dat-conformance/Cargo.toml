@@ -1,0 +1,12 @@
+[package]
+name = "dat-conformance"
+description = "Runs the examples and the spec's code blocks in both modes and compares the results"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dat-diag.workspace = true
+dat-syntax.workspace = true
+dat-check.workspace = true

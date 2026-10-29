@@ -1,0 +1,7 @@
+[package]
+name = "dat-ir"
+description = "The typed IR that both run modes consume"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true

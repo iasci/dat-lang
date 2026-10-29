@@ -1,0 +1,17 @@
+// Names: undefined, misspelled, redeclared, and declared in a block that ended.
+
+function compute(value: int): int {
+  return value * 2;
+}
+
+function main(): void {
+  let total = 0;
+  if (total == 0) {
+    let bonus = 5;
+    total += bonus;
+  }
+  print(bonus);
+  print(totl);
+  print(compte(2));
+  let total = 1;
+}

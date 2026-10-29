@@ -1,0 +1,11 @@
+// The interpreter-speed gate: interpreted against bench/fib.py 30.
+function fib(n: int): int {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 1) + fib(n - 2);
+}
+
+function main(): void {
+  print(fib(30));
+}

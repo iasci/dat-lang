@@ -1,0 +1,10 @@
+// Exported functions declare their return type, and a body can't redeclare a parameter.
+
+export function double(n: int) {
+  return n * 2;
+}
+
+function shadow(x: int): int {
+  let x = 2;
+  return x;
+}

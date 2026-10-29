@@ -1,0 +1,15 @@
+// A `never` function can't reach its end or return, and nothing has type never or void as a parameter.
+
+function stop(): never {
+  while (true) {
+    break;
+  }
+}
+
+function quit(): never {
+  return;
+}
+
+function takes(x: never, y: void): int {
+  return 1;
+}

@@ -1,0 +1,79 @@
+# Golden results for bad_fib.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0301]: can't add string and int
+  --> bad_fib.dat:10:9
+10 |   print("fib(10) = " + fib(10));
+   |         ^^^^^^^^^^^^^^^^^^^^^^ `fib(10)` is an int
+fix: use a template string
+10 |   print(`fib(10) = ${fib(10)}`);
+1 error, 1 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0301]: can't add string and int
+  --> bad_fib.dat:10:9
+10 |   print("fib(10) = " + fib(10));
+   |         ^^^^^^^^^^^^^^^^^^^^^^ `fib(10)` is an int
+fix: use a template string
+10 |   print(`fib(10) = ${fib(10)}`);
+1 error, 1 fixable with dat fix
+
+=== check --json
+status: 1
+--- stderr
+{
+  "schemaVersion": 1,
+  "diagnostics": [
+    {
+      "code": "E0301",
+      "severity": "error",
+      "message": "can't add string and int",
+      "file": "bad_fib.dat",
+      "span": {
+        "byteStart": 145,
+        "byteEnd": 167,
+        "line": 10,
+        "col": 9,
+        "endLine": 10,
+        "endCol": 31
+      },
+      "labels": [
+        {
+          "message": "`fib(10)` is an int"
+        }
+      ],
+      "fixes": [
+        {
+          "title": "use a template string",
+          "applicability": "safe",
+          "isPreferred": true,
+          "edits": [
+            {
+              "file": "bad_fib.dat",
+              "byteStart": 145,
+              "byteEnd": 167,
+              "before": "\"fib(10) = \" + fib(10)",
+              "after": "`fib(10) = ${fib(10)}`"
+            }
+          ]
+        }
+      ],
+      "rendered": "error[E0301]: can't add string and int\n  --> bad_fib.dat:10:9\n10 |   print(\"fib(10) = \" + fib(10));\n   |         ^^^^^^^^^^^^^^^^^^^^^^ `fib(10)` is an int\nfix: use a template string\n10 |   print(`fib(10) = ${fib(10)}`);\n"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "fixable": 1
+  }
+}
+
+=== run (fixed)
+status: 0
+--- stdout
+fib(10) = 55

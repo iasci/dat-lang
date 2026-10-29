@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+dat-diag = { path = "crates/dat-diag" }
+dat-syntax = { path = "crates/dat-syntax" }
+dat-ir = { path = "crates/dat-ir" }
+dat-check = { path = "crates/dat-check" }
+dat-rt = { path = "crates/dat-rt" }
+dat-interp = { path = "crates/dat-interp" }
+dat-codegen = { path = "crates/dat-codegen" }
+
+[profile.release]
+debug = "line-tables-only"
+panic = "unwind"

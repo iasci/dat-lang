@@ -1,0 +1,10 @@
+[package]
+name = "dat-syntax"
+description = "Lexer, parser and arena AST for dat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dat-diag.workspace = true

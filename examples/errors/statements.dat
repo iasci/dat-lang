@@ -1,0 +1,25 @@
+// Statement rules: assignments, increments, returns and loops.
+
+function sign(x: int): string {
+  if (x > 0) {
+    return "positive";
+  }
+  if (x < 0) {
+    return "negative";
+  }
+}
+
+function report(n: int): void {
+  return n;
+}
+
+function main(): void {
+  const limit = 10;
+  limit = 20;
+  let i = 0;
+  let j = i++;
+  ++i;
+  continue;
+  let x;
+  const y: int;
+}

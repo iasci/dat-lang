@@ -1,0 +1,61 @@
+// `return`, `break` and `continue` leave a `try` block the same way in both modes.
+
+function firstOver(limit: int): int {
+  for (let i = 0; i < 100; i++) {
+    try {
+      if (i * i > limit) {
+        return i;
+      }
+    } catch (e: RangeError) {
+      return -1;
+    }
+  }
+  return -2;
+}
+
+function sumSkippingThrees(n: int): int {
+  let total = 0;
+  let i = 0;
+  while (i < n) {
+    i++;
+    try {
+      if (i % 3 == 0) {
+        continue;
+      }
+      if (i > 10) {
+        break;
+      }
+      total += i;
+    } catch (e: RangeError) {
+      total = -1;
+    }
+  }
+  return total;
+}
+
+function nested(): string {
+  let log = "";
+  for (let i = 0; i < 3; i++) {
+    try {
+      try {
+        if (i == 1) {
+          throw RangeError { message: "inner" };
+        }
+        log += `ok${i} `;
+      } catch (e: AssertionError) {
+        log += "wrong ";
+      }
+    } catch (e: RangeError) {
+      log += `caught ${e.message} `;
+      continue;
+    }
+    log += "| ";
+  }
+  return log;
+}
+
+function main(): void {
+  print(firstOver(50));
+  print(sumSkippingThrees(20));
+  print(nested());
+}

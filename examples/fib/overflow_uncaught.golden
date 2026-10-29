@@ -1,0 +1,12 @@
+# Golden results for overflow_uncaught.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 1
+--- stderr
+RangeError: int overflow: 4660046610375530309 + 7540113804746346429
+  at fibIter (overflow_uncaught.dat:9:18)
+  at main (overflow_uncaught.dat:17:9)

@@ -1,0 +1,36 @@
+// Test results and failure output, in both modes (§20).
+
+function double(n: int): int {
+  return n * 2;
+}
+
+function helper(n: int): int {
+  return n + 9223372036854775807;
+}
+
+test "passes" {
+  assert(double(2) == 4);
+}
+
+test "prints and fails" {
+  print("checking 3");
+  assert(double(3) == 7);
+}
+
+test "fails with a message" {
+  assert(double(1) == 2, "fine");
+  assert(double(1) != 2, "double(1) should not be 2");
+}
+
+test "runtime error in a helper" {
+  const r = helper(1);
+  assert(r > 0);
+}
+
+test "fail" {
+  fail("not written yet");
+}
+
+test "strings show quoted" {
+  assert(`${double(2)}` == "five");
+}

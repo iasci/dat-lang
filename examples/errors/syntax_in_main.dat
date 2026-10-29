@@ -1,0 +1,5 @@
+// A syntax error inside main is the only error: main isn't reported missing.
+
+function main(): void {
+  let x = 1 +;
+}

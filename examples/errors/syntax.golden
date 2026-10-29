@@ -1,0 +1,27 @@
+# Golden results for syntax.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0001]: expected `;`, found `}`
+ --> syntax.dat:5:1
+5 | }
+  | ^ the statement before this needs a `;`
+fix: add `;`
+4 |   return 1;
+
+error[E0001]: dat has no `===`; `==` compares contents
+ --> syntax.dat:8:12
+8 |   return 1 === 1;
+  |            ^^^
+fix: use `==`
+8 |   return 1 == 1;
+
+error[E0301]: can't add string and int
+  --> syntax.dat:12:9
+12 |   print("three" + 3);
+   |         ^^^^^^^^^^^ `3` is an int
+fix: use a template string
+12 |   print(`three${3}`);
+3 errors, 3 fixable with dat fix

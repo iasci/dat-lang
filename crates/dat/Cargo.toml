@@ -1,0 +1,20 @@
+[package]
+name = "dat"
+description = "The dat command: check, run, test, build and fix"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "dat"
+path = "src/main.rs"
+
+[dependencies]
+dat-diag.workspace = true
+dat-syntax.workspace = true
+dat-ir.workspace = true
+dat-check.workspace = true
+dat-rt.workspace = true
+dat-interp.workspace = true
+dat-codegen.workspace = true

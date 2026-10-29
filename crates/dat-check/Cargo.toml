@@ -1,0 +1,12 @@
+[package]
+name = "dat-check"
+description = "Name resolution, type checking and lowering to the typed IR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dat-diag.workspace = true
+dat-syntax.workspace = true
+dat-ir.workspace = true

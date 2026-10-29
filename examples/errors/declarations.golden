@@ -1,0 +1,34 @@
+# Golden results for declarations.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0655]: exported function `double` must declare its return type
+ --> declarations.dat:3:17
+3 | export function double(n: int) {
+  |                 ^^^^^^ importers read a module's interface without its bodies
+fix: declare `: int`
+3 | export function double(n: int): int {
+
+error[E1402]: x is already declared
+ --> declarations.dat:8:7
+8 |   let x = 2;
+  |       ^ it's a parameter of this function; parameters are constants, so copy it into a variable with another name
+2 errors, 1 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0655]: exported function `double` must declare its return type
+ --> declarations.dat:3:17
+3 | export function double(n: int) {
+  |                 ^^^^^^ importers read a module's interface without its bodies
+fix: declare `: int`
+3 | export function double(n: int): int {
+
+error[E1402]: x is already declared
+ --> declarations.dat:8:7
+8 |   let x = 2;
+  |       ^ it's a parameter of this function; parameters are constants, so copy it into a variable with another name
+2 errors, 1 fixable with dat fix

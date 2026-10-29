@@ -1,0 +1,118 @@
+# Golden results for statements.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0601]: missing return: `sign` can reach its end without returning a string
+  --> statements.dat:10:1
+10 | }
+   | ^ `sign` returns string
+fix (review): return a value at the end of `sign`
+10 |   return _;
+
+error[E0652]: `report` returns void, so `return` can't have a value
+  --> statements.dat:13:10
+13 |   return n;
+   |          ^
+fix (review): return without a value
+13 |   return;
+
+error[E0201]: `limit` is const and can't be reassigned
+  --> statements.dat:18:3
+18 |   limit = 20;
+   |   ^^^^^ declared with `const`
+fix (review): declare it with `let`
+17 |   let limit = 10;
+
+error[E0303]: ++ is a statement
+  --> statements.dat:20:11
+20 |   let j = i++;
+   |           ^^^ `++` can't be used inside an expression
+fix: move `i++` into its own statement
+20 |   let j = i; i++;
+
+error[E0304]: no prefix form: write `i++`
+  --> statements.dat:21:3
+21 |   ++i;
+   |   ^^^ `++` goes after the variable
+fix: use `i++`
+21 |   i++;
+
+error[E0750]: `continue` outside a loop
+  --> statements.dat:22:3
+22 |   continue;
+   |   ^^^^^^^^^ there's no loop to leave here
+
+error[E0204]: no type and no value
+  --> statements.dat:23:3
+23 |   let x;
+   |   ^^^^^^ dat can't tell what type `x` has
+fix (review): give it a value
+23 |   let x = _;
+
+error[E0205]: const must be initialized
+  --> statements.dat:24:3
+24 |   const y: int;
+   |   ^^^^^^^^^^^^^
+fix (review): give it a value
+24 |   const y: int = _;
+8 errors, 2 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0601]: missing return: `sign` can reach its end without returning a string
+  --> statements.dat:10:1
+10 | }
+   | ^ `sign` returns string
+fix (review): return a value at the end of `sign`
+10 |   return _;
+
+error[E0652]: `report` returns void, so `return` can't have a value
+  --> statements.dat:13:10
+13 |   return n;
+   |          ^
+fix (review): return without a value
+13 |   return;
+
+error[E0201]: `limit` is const and can't be reassigned
+  --> statements.dat:18:3
+18 |   limit = 20;
+   |   ^^^^^ declared with `const`
+fix (review): declare it with `let`
+17 |   let limit = 10;
+
+error[E0303]: ++ is a statement
+  --> statements.dat:20:11
+20 |   let j = i++;
+   |           ^^^ `++` can't be used inside an expression
+fix: move `i++` into its own statement
+20 |   let j = i; i++;
+
+error[E0304]: no prefix form: write `i++`
+  --> statements.dat:21:3
+21 |   ++i;
+   |   ^^^ `++` goes after the variable
+fix: use `i++`
+21 |   i++;
+
+error[E0750]: `continue` outside a loop
+  --> statements.dat:22:3
+22 |   continue;
+   |   ^^^^^^^^^ there's no loop to leave here
+
+error[E0204]: no type and no value
+  --> statements.dat:23:3
+23 |   let x;
+   |   ^^^^^^ dat can't tell what type `x` has
+fix (review): give it a value
+23 |   let x = _;
+
+error[E0205]: const must be initialized
+  --> statements.dat:24:3
+24 |   const y: int;
+   |   ^^^^^^^^^^^^^
+fix (review): give it a value
+24 |   const y: int = _;
+8 errors, 2 fixable with dat fix

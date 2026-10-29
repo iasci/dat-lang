@@ -1,0 +1,11 @@
+[package]
+name = "dat-interp"
+description = "The dat interpreter: walks the typed IR and calls dat-rt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dat-ir.workspace = true
+dat-rt.workspace = true

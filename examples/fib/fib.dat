@@ -1,0 +1,68 @@
+// fib.dat: the M0 walking skeleton. Every construct is plain dat as specified in reference/.
+
+// Recursive: calls, recursion, `<`, checked `+` and `-`.
+function fib(n: int): int {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 1) + fib(n - 2);
+}
+
+// Iterative: let, const, for, `<=`, `++`, assignment, a user-thrown runtime error.
+// fibIter(92) is the largest Fibonacci number that fits in int; fibIter(93) overflows.
+function fibIter(n: int): int {
+  if (n < 0) {
+    throw RangeError { message: `fibIter: n must be >= 0, got ${n}` };
+  }
+  if (n < 2) {
+    return n;
+  }
+  let prev = 0;
+  let curr = 1;
+  for (let i = 2; i <= n; i++) {
+    const next = prev + curr;   // RangeError when the sum doesn't fit in int
+    prev = curr;
+    curr = next;
+  }
+  return curr;
+}
+
+function main(): void {
+  print(`fib(25) = ${fib(25)}`);
+  print("fibIter(92) =", fibIter(92));
+  try {
+    print(fibIter(93));
+    print("not reached");
+  } catch (e: RangeError) {
+    print("fibIter(93) overflows int: caught RangeError");
+  }
+}
+
+test "small values" {
+  assert(fib(0) == 0);
+  assert(fib(1) == 1);
+  assert(fib(10) == 55);
+  assert(fibIter(10) == fib(10));
+}
+
+test "largest value that fits in int" {
+  assert(fibIter(92) == 7540113804746346429);
+}
+
+test "overflow is a catchable RangeError" {
+  try {
+    const f = fibIter(93);
+    fail(`expected a RangeError, got ${f}`);
+  } catch (e: RangeError) {
+    assert(e.message != "");
+  }
+}
+
+test "negative input is rejected" {
+  try {
+    const f = fibIter(-1);
+    fail(`expected a RangeError, got ${f}`);
+  } catch (e: RangeError) {
+    assert(e.message == "fibIter: n must be >= 0, got -1");
+  }
+}

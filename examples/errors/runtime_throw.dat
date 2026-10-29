@@ -1,0 +1,16 @@
+// Only errors can be thrown, catch clauses take error types, and a catch-all comes last.
+
+function main(): void {
+  try {
+    throw "oops";
+  } catch (e) {
+    print("first");
+  } catch (e: RangeError) {
+    print("never");
+  }
+  try {
+    print(1);
+  } catch (e: int) {
+    print(2);
+  }
+}

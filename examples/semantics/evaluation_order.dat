@@ -1,0 +1,25 @@
+// Operands, arguments and compound assignments are evaluated left to right (§03).
+
+function label(text: string): string {
+  print(text);
+  return text;
+}
+
+function num(n: int): int {
+  print(`num ${n}`);
+  return n;
+}
+
+function pair(a: int, b: int): int {
+  return a * 10 + b;
+}
+
+function main(): void {
+  print(label("a") + label("b"));
+  print(pair(num(1), num(2)));
+  let total = num(5);
+  total += num(6);
+  print(total);
+  print(num(1) < num(2) && num(3) > num(4) || num(5) == num(5));
+  print(`${num(7)} and ${num(8)}`);
+}

@@ -1,0 +1,20 @@
+# Golden results for syntax_in_main.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0001]: expected an expression, found `;`
+ --> syntax_in_main.dat:4:14
+4 |   let x = 1 +;
+  |              ^
+1 error
+
+=== run
+status: 2
+--- stderr
+error[E0001]: expected an expression, found `;`
+ --> syntax_in_main.dat:4:14
+4 |   let x = 1 +;
+  |              ^
+1 error

@@ -1,0 +1,10 @@
+[package]
+name = "dat-codegen"
+description = "Emits Rust from the typed IR and builds it with Cargo against dat-rt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dat-ir.workspace = true

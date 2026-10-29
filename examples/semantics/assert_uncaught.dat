@@ -1,0 +1,14 @@
+// A failed comparison escaping main shows both sides, then the trace (§09, §12).
+
+function total(): int {
+  return 95;
+}
+
+function verify(expected: int): void {
+  assert(total() == expected);
+}
+
+function main(): void {
+  print("checking");
+  verify(100);
+}

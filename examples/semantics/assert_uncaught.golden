@@ -1,0 +1,16 @@
+# Golden results for assert_uncaught.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 1
+--- stdout
+checking
+--- stderr
+AssertionError: assertion failed: total() == expected
+  left:  95
+  right: 100
+  at verify (assert_uncaught.dat:8:3)
+  at main (assert_uncaught.dat:13:3)

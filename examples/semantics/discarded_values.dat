@@ -1,0 +1,23 @@
+// A statement may be a value that is thrown away; both modes accept it (Q16 is open).
+
+function five(): int {
+  return 5;
+}
+
+function main(): void {
+  let x = 1;
+  const b = true;
+  const s = "s";
+  x;
+  x == 1;
+  s < "t";
+  !b;
+  b && b;
+  s;
+  s.toString();
+  five();
+  for (x; x < 3; x++) {
+    print(x);
+  }
+  print("ok");
+}

@@ -1,0 +1,35 @@
+# Golden results for tests.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== test
+status: 1
+--- stdout
+FAIL tests.dat:17  prints and fails
+  assert(double(3) == 7)
+    left:  6
+    right: 7
+  output:
+    checking 3
+
+FAIL tests.dat:22  fails with a message
+  assert(double(1) != 2, "double(1) should not be 2")
+    left:  2
+    right: 2
+    message: double(1) should not be 2
+
+FAIL tests.dat:26  runtime error in a helper
+  RangeError: int overflow: 1 + 9223372036854775807
+    at helper (tests.dat:8:10)
+
+FAIL tests.dat:31  fail
+  AssertionError: not written yet
+
+FAIL tests.dat:35  strings show quoted
+  assert(`${double(2)}` == "five")
+    left:  "4"
+    right: "five"
+
+5 failed, 1 passed (<ms>)

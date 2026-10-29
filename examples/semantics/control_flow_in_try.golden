@@ -1,0 +1,12 @@
+# Golden results for control_flow_in_try.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 0
+--- stdout
+8
+37
+ok0 | caught inner ok2 | 

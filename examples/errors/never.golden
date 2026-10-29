@@ -1,0 +1,54 @@
+# Golden results for never.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0654]: `stop` returns never, but it can reach its end
+ --> never.dat:7:1
+7 | }
+  | ^ a `never` function must end every path with `throw` or a call such as `fail(...)`
+fix (review): fail at the end of `stop`
+7 |   fail(_);
+
+error[E0654]: `quit` returns never, so it can't `return`
+  --> never.dat:10:3
+10 |   return;
+   |   ^^^^^^^ throw an error instead, or change the return type
+
+error[E0252]: a parameter can't have type never
+  --> never.dat:13:19
+13 | function takes(x: never, y: void): int {
+   |                   ^^^^^ no value has this type, so the function could never be called
+
+error[E0252]: a parameter can't have type void
+  --> never.dat:13:29
+13 | function takes(x: never, y: void): int {
+   |                             ^^^^ no value has this type, so the function could never be called
+4 errors
+
+=== run
+status: 2
+--- stderr
+error[E0654]: `stop` returns never, but it can reach its end
+ --> never.dat:7:1
+7 | }
+  | ^ a `never` function must end every path with `throw` or a call such as `fail(...)`
+fix (review): fail at the end of `stop`
+7 |   fail(_);
+
+error[E0654]: `quit` returns never, so it can't `return`
+  --> never.dat:10:3
+10 |   return;
+   |   ^^^^^^^ throw an error instead, or change the return type
+
+error[E0252]: a parameter can't have type never
+  --> never.dat:13:19
+13 | function takes(x: never, y: void): int {
+   |                   ^^^^^ no value has this type, so the function could never be called
+
+error[E0252]: a parameter can't have type void
+  --> never.dat:13:29
+13 | function takes(x: never, y: void): int {
+   |                             ^^^^ no value has this type, so the function could never be called
+4 errors

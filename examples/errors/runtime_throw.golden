@@ -1,0 +1,40 @@
+# Golden results for runtime_throw.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E1250]: only errors can be thrown, and this is a string
+ --> runtime_throw.dat:5:11
+5 |     throw "oops";
+  |           ^^^^^^ throw a built-in error such as `RangeError { message: ... }`
+
+error[E1252]: a clause that catches every error must be the last one
+ --> runtime_throw.dat:6:5
+6 |   } catch (e) {
+  |     ^^^^^^^^^^^ the clauses after it could never run
+
+error[E1251]: `int` isn't an error type
+  --> runtime_throw.dat:13:15
+13 |   } catch (e: int) {
+   |               ^^^ catch an error type such as `RangeError`, or `Error` for every error
+3 errors
+
+=== run
+status: 2
+--- stderr
+error[E1250]: only errors can be thrown, and this is a string
+ --> runtime_throw.dat:5:11
+5 |     throw "oops";
+  |           ^^^^^^ throw a built-in error such as `RangeError { message: ... }`
+
+error[E1252]: a clause that catches every error must be the last one
+ --> runtime_throw.dat:6:5
+6 |   } catch (e) {
+  |     ^^^^^^^^^^^ the clauses after it could never run
+
+error[E1251]: `int` isn't an error type
+  --> runtime_throw.dat:13:15
+13 |   } catch (e: int) {
+   |               ^^^ catch an error type such as `RangeError`, or `Error` for every error
+3 errors

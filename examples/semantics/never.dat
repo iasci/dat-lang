@@ -1,0 +1,26 @@
+// A `never` function and a `try` inside one.
+
+function stop(reason: string): never {
+  try {
+    fail(reason);
+  } catch (e: RangeError) {
+    print("not this");
+  }
+  fail(`still stopping: ${reason}`);
+}
+
+function pick(n: int): int {
+  if (n > 0) {
+    return n;
+  }
+  stop("n must be positive");
+}
+
+function main(): void {
+  print(pick(3));
+  try {
+    print(pick(0));
+  } catch (e: AssertionError) {
+    print(e.message);
+  }
+}

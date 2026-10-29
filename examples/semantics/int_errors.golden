@@ -1,0 +1,18 @@
+# Golden results for int_errors.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 0
+--- stdout
+RangeError: int overflow: 9223372036854775807 + 1
+RangeError: int overflow: 9223372036854775807 + 1
+RangeError: int overflow: -(-9223372036854775808)
+RangeError: int remainder by zero: 7 % 0
+RangeError: int overflow: -9223372036854775808 - 1
+RangeError: int overflow: 9223372036854775807 * 2
+RangeError: int overflow: -9223372036854775808 % -1
+-1
+1

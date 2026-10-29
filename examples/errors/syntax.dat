@@ -1,0 +1,13 @@
+// Syntax errors: each declaration reports its first one, and the rest of the file is still checked.
+
+function one(): int {
+  return 1
+}
+
+function two(): bool {
+  return 1 === 1;
+}
+
+function three(): void {
+  print("three" + 3);
+}

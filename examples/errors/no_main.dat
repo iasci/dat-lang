@@ -1,0 +1,5 @@
+// `dat check` accepts a file without `main`; `dat run` needs one.
+
+function helper(): int {
+  return 1;
+}

@@ -1,0 +1,96 @@
+# Golden results for types.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0250]: expected a string, found an int
+ --> types.dat:9:23
+9 |   let label: string = count;
+  |                       ^^^^^ this is an int
+fix: convert it with a template string
+9 |   let label: string = `${count}`;
+
+error[E0701]: condition must be bool
+  --> types.dat:10:7
+10 |   if (count) {
+   |       ^^^^^ `count` is an int
+fix: compare with 0
+10 |   if (count != 0) {
+
+error[E0301]: can't add string and int
+  --> types.dat:13:17
+13 |   const total = "Total: " + count + 1;
+   |                 ^^^^^^^^^^^^^^^^^^^^^ `count` is an int
+fix: use a template string
+13 |   const total = `Total: ${count}${1}`;
+
+error[E0250]: expected an int, found a string
+  --> types.dat:14:14
+14 |   print(half("4"));
+   |              ^^^ this is a string
+
+error[E0650]: `half` takes 1 argument, but 2 were given
+  --> types.dat:15:9
+15 |   print(half(1, 2));
+   |         ^^^^^^^^^^
+
+error[E0350]: can't apply `-` to an int and a string
+  --> types.dat:16:9
+16 |   print(count - "1");
+   |         ^^^^^^^^^^^
+
+error[E0701]: condition must be bool
+  --> types.dat:17:10
+17 |   while (label) {
+   |          ^^^^^ `label` is a string
+fix: compare with the empty string
+17 |   while (label != "") {
+7 errors, 4 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0250]: expected a string, found an int
+ --> types.dat:9:23
+9 |   let label: string = count;
+  |                       ^^^^^ this is an int
+fix: convert it with a template string
+9 |   let label: string = `${count}`;
+
+error[E0701]: condition must be bool
+  --> types.dat:10:7
+10 |   if (count) {
+   |       ^^^^^ `count` is an int
+fix: compare with 0
+10 |   if (count != 0) {
+
+error[E0301]: can't add string and int
+  --> types.dat:13:17
+13 |   const total = "Total: " + count + 1;
+   |                 ^^^^^^^^^^^^^^^^^^^^^ `count` is an int
+fix: use a template string
+13 |   const total = `Total: ${count}${1}`;
+
+error[E0250]: expected an int, found a string
+  --> types.dat:14:14
+14 |   print(half("4"));
+   |              ^^^ this is a string
+
+error[E0650]: `half` takes 1 argument, but 2 were given
+  --> types.dat:15:9
+15 |   print(half(1, 2));
+   |         ^^^^^^^^^^
+
+error[E0350]: can't apply `-` to an int and a string
+  --> types.dat:16:9
+16 |   print(count - "1");
+   |         ^^^^^^^^^^^
+
+error[E0701]: condition must be bool
+  --> types.dat:17:10
+17 |   while (label) {
+   |          ^^^^^ `label` is a string
+fix: compare with the empty string
+17 |   while (label != "") {
+7 errors, 4 fixable with dat fix

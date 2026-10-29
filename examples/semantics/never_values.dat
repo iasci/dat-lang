@@ -1,0 +1,39 @@
+// `never` can stand wherever a value is expected (§01): it never finishes.
+
+function stop(reason: string): never {
+  fail(reason);
+}
+
+function check(n: int): int {
+  return n > 0 ? n : stop("not positive");
+}
+
+function main(): void {
+  try {
+    assert(false, fail("boom"));
+    print("not reached");
+  } catch (e: AssertionError) {
+    print(`1: ${e.message}`);
+  }
+  try {
+    throw RangeError { message: fail("from the message") };
+  } catch (e: AssertionError) {
+    print(`2: ${e.message}`);
+  }
+  try {
+    print(1 + stop("in a sum"));
+  } catch (e: AssertionError) {
+    print(`3: ${e.message}`);
+  }
+  try {
+    print(`template ${stop("in a template")}`);
+  } catch (e: AssertionError) {
+    print(`4: ${e.message}`);
+  }
+  print(check(4));
+  try {
+    print(check(-4));
+  } catch (e: AssertionError) {
+    print(`5: ${e.message}`);
+  }
+}

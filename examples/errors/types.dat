@@ -1,0 +1,20 @@
+// Type errors: one diagnostic per root cause, each with a fix where one is certain.
+
+function half(n: int): int {
+  return n * 2;
+}
+
+function main(): void {
+  const count = 3;
+  let label: string = count;
+  if (count) {
+    print("some");
+  }
+  const total = "Total: " + count + 1;
+  print(half("4"));
+  print(half(1, 2));
+  print(count - "1");
+  while (label) {
+    break;
+  }
+}

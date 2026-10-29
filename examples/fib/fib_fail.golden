@@ -1,0 +1,15 @@
+# Golden results for fib_fail.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== test
+status: 1
+--- stdout
+FAIL fib_fail.dat:9  deliberately wrong
+  assert(fib(10) == 56)
+    left:  55
+    right: 56
+
+1 failed, 0 passed (<ms>)

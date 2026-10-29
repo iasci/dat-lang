@@ -1,0 +1,33 @@
+// The messages of int overflow and `% 0` name the operation and its values (§12).
+
+function attempt(which: int): void {
+  let big = 9223372036854775807;
+  let small = -9223372036854775807 - 1;
+  try {
+    if (which == 0) {
+      big += 1;
+    } else if (which == 1) {
+      big++;
+    } else if (which == 2) {
+      print(-small);
+    } else if (which == 3) {
+      print(7 % 0);
+    } else if (which == 4) {
+      print(small - 1);
+    } else if (which == 5) {
+      print(big * 2);
+    } else {
+      print(small % -1);
+    }
+  } catch (e: RangeError) {
+    print(e.toString());
+  }
+}
+
+function main(): void {
+  for (let i = 0; i < 7; i++) {
+    attempt(i);
+  }
+  print(-7 % 3);
+  print(7 % -3);
+}

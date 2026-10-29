@@ -1,0 +1,15 @@
+# Golden results for never_values.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 0
+--- stdout
+1: boom
+2: from the message
+3: in a sum
+4: in a template
+4
+5: not positive

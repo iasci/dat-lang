@@ -1,0 +1,18 @@
+// Strings: concatenation, templates, escapes, comparison and toString.
+
+function main(): void {
+  let s = "a";
+  for (let i = 0; i < 3; i++) {
+    s += `${i}`;
+  }
+  print(s);
+  print("tab\there", "quote\"", "back\\slash", "smile \u{1F600}");
+  print(`multi
+line, ${true} ${false} ${-3}`);
+  print(`escaped \${not} \` backtick`);
+  print("apple" < "banana", "b" > "a", "é" > "z", "" == "");
+  print(42.toString() + "!", true.toString());
+  const t = s == "a012" ? "yes" : "no";
+  print(t);
+  print();
+}

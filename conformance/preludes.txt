@@ -1,0 +1,5 @@
+# Hidden setup for spec blocks that use names they don't declare.
+# Each line is `<block id> <statement>`; a block's statements start its generated main.
+# The block id is the spec file and the line of the block's opening fence, so
+# editing the spec above a block makes its prelude stale, loudly.
+03-operators.md:37 const name = "Ada";
