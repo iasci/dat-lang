@@ -27,7 +27,7 @@ compiler added, approved with their ❌ examples at M0, end in 50–99.
 | E0654 | spec §06 | A `never` function can return or reach its end | `fail(_);` at the end (review) |
 | E0655 | spec §06 | An exported function without a declared return type | the inferred type (safe) |
 | E0660 | spec §06 | `dat run` or `dat build` on a file without `main` | an empty `main` at the end (review) |
-| E0661 | spec §06 | `main` has parameters or doesn't return `void` | `: void` (review) |
+| E0661 | spec §06 | `main` has parameters or doesn't return `void` | `: void`, and each `return x;` becomes `return;` (a returned call stays as a statement) (review) |
 | E0701 | spec §07 | Condition must be bool | `!= 0` for an int, `!= ""` for a string (safe) |
 | E0750 | spec §07 | `break` or `continue` outside a loop | — |
 | E0850 | spec §08 | A struct literal is missing a field | the field with `_`, at the end of the literal (review) |

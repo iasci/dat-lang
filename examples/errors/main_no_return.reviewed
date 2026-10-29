@@ -1,0 +1,3 @@
+// `main(): int` with no return: E0661 only, not also a missing return.
+function main(): void {
+}

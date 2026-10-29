@@ -1,0 +1,28 @@
+# Golden results for main_returns_int.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0661]: `main` must return void, not int
+  --> main_returns_int.dat:7:18
+ 7 | function main(): int {
+   |                  ^^^
+fix (review): return void
+ 7 | function main(): void {
+10 |     answer(); return;
+12 |   return;
+1 error
+
+=== run
+status: 2
+--- stderr
+error[E0661]: `main` must return void, not int
+  --> main_returns_int.dat:7:18
+ 7 | function main(): int {
+   |                  ^^^
+fix (review): return void
+ 7 | function main(): void {
+10 |     answer(); return;
+12 |   return;
+1 error

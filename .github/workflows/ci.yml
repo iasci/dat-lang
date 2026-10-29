@@ -35,6 +35,24 @@ jobs:
           cargo clippy --release --all-targets --locked -- -D warnings
       - name: Conformance (examples, fault-injection self-test, spec blocks, structure) in both modes
         run: target/release/dat-conformance all --verbose
+      # A `dat build` executable moved elsewhere must still print its trace:
+      # on macOS that needs the `.dSYM` that `dat build` writes next to it.
+      - name: A moved `dat build` executable keeps its trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          t=$(mktemp -d)
+          mkdir "$t/built" "$t/moved"
+          (cd examples/fib && ../../target/release/dat build overflow_uncaught.dat -o "$t/built/app")
+          mv "$t/built/app" "$t/moved/"
+          if [ -d "$t/built/app.dSYM" ]; then mv "$t/built/app.dSYM" "$t/moved/"; fi
+          status=0
+          (cd "$t" && ./moved/app) 2> "$t/stderr.txt" || status=$?
+          echo "exit status $status"; cat "$t/stderr.txt"
+          test "$status" -eq 1
+          awk '/^=== /{run = ($0 == "=== run")} run && /^--- /{err = ($0 == "--- stderr"); next} run && err && NF' \
+            examples/fib/overflow_uncaught.golden > "$t/expected.txt"
+          diff "$t/expected.txt" <(grep -v '^$' "$t/stderr.txt")
       - name: Keep the generated Rust and the spec cases when something fails
         if: failure()
         uses: actions/upload-artifact@v4

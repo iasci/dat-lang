@@ -1,0 +1,7 @@
+// A variable typed `void` or `never`: E0252 on the type, and nothing else.
+function main(): void {
+  let x: void;
+  const y: never;
+  let z: void = 5;
+  print("unreachable");
+}

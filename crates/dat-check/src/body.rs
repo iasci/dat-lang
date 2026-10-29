@@ -113,6 +113,17 @@ impl<'m, 'a> Body<'m, 'a> {
         self.m.ast
     }
 
+    /// Whether this is the module's `main` function.
+    fn is_main(&self) -> bool {
+        self.m.by_name.get("main") == Some(&self.func)
+    }
+
+    /// A `main` declared to return a value: E0661 reports it, so its
+    /// returns and its end aren't reported again.
+    fn is_bad_main(&self, ret: Option<Ty>) -> bool {
+        ret.is_some_and(|t| !matches!(t, Ty::Void | Ty::Poison)) && self.is_main()
+    }
+
     fn text(&self, span: Span) -> &'a str {
         self.m.text(span)
     }
@@ -272,10 +283,11 @@ impl<'m, 'a> Body<'m, 'a> {
             Some(t) => t,
             None => self.infer_return(),
         };
-        if !matches!(ret, Ty::Void | Ty::Never | Ty::Poison) && !terminates(&body) {
+        let bad_main = self.is_bad_main(Some(ret));
+        if !matches!(ret, Ty::Void | Ty::Never | Ty::Poison) && !terminates(&body) && !bad_main {
             self.missing_return(block, ret);
         }
-        if ret == Ty::Never && !terminates(&body) {
+        if ret == Ty::Never && !terminates(&body) && !bad_main {
             self.never_reaches_end(block);
         }
         let item = &self.ast().items[self.m.sigs[self.func.0 as usize].item];
@@ -374,6 +386,17 @@ impl<'m, 'a> Body<'m, 'a> {
         match &stmt.kind {
             StmtKind::Let { is_const, name, ty, init } => {
                 let annotated = ty.as_ref().map(|t| self.m.resolve_type(t));
+                if let (Some(t), Some(a @ (Ty::Void | Ty::Never))) = (ty.as_ref(), annotated) {
+                    let d = self
+                        .err(codes::VOID_VALUE, t.span, format!("a variable can't have type {}", a.name()))
+                        .with_label("no value has this type");
+                    self.push(d);
+                    if let Some(init) = *init {
+                        self.expr(init);
+                    }
+                    self.declare(name, Ty::Poison, VarKind::Let, stmt.span, None, None);
+                    return;
+                }
                 let Some(init) = *init else {
                     self.no_value(stmt.span, *is_const, name, ty.as_ref(), annotated);
                     self.declare(name, Ty::Poison, VarKind::Let, stmt.span, None, None);
@@ -674,6 +697,14 @@ impl<'m, 'a> Body<'m, 'a> {
 
     fn return_stmt(&mut self, value: Option<ExprId>, span: Span) -> Option<ir::Stmt> {
         let v = value.map(|e| self.expr(e));
+        if let Some(e) = value
+            && self.is_main()
+        {
+            self.m.main_returns.push((span, e));
+        }
+        if self.is_bad_main(self.ret) {
+            return None;
+        }
         match (self.ret, v) {
             (None, v) => {
                 let ty = v.as_ref().map_or(Ty::Void, |v| v.ty);

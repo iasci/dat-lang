@@ -7,6 +7,11 @@
 //!
 //! Two runs of one file share its crate, so each holds the crate's lock
 //! from writing its source until its program has started.
+//!
+//! dat-rt's dependencies are pinned: each generated crate gets a
+//! `Cargo.lock` holding exactly the versions in dat's own, and builds with
+//! `--locked`. dat's own build has downloaded them, so a generated crate
+//! builds without network.
 
 use crate::{Entry, emit_crate};
 use dat_ir::Program;
@@ -74,6 +79,82 @@ fn write_if_changed(path: &Path, contents: &str) -> Result<(), String> {
     std::fs::write(path, contents).map_err(|e| format!("can't write {}: {e}", path.display()))
 }
 
+/// dat's own lock file, which pins dat-rt's dependencies.
+const WORKSPACE_LOCK: &str = include_str!("../../../Cargo.lock");
+
+/// The `Cargo.lock` of the generated crate `name`: dat-rt and everything it
+/// depends on, as dat's own lock file has them, plus the crate itself. It is
+/// what Cargo would write, so `--locked` accepts it.
+fn lock_file(name: &str) -> String {
+    let mut parts = WORKSPACE_LOCK.split("\n[[package]]\n");
+    let header = parts.next().unwrap_or_default();
+    let packages: Vec<Package> = parts.map(Package::parse).collect();
+    let mut wanted = vec!["dat-rt"];
+    let mut keep: Vec<&Package> = Vec::new();
+    while let Some(dep) = wanted.pop() {
+        let mut words = dep.split(' ');
+        let (dep_name, dep_version) = (words.next().unwrap_or_default(), words.next());
+        if let Some(p) = packages.iter().find(|p| p.name == dep_name && dep_version.is_none_or(|v| v == p.version))
+            && !keep.iter().any(|k| std::ptr::eq(*k, p))
+        {
+            keep.push(p);
+            wanted.extend(p.deps.iter().copied());
+        }
+    }
+    let root = format!("name = \"{name}\"\nversion = \"0.0.0\"\ndependencies = [\n \"dat-rt\",\n]\n");
+    let mut blocks: Vec<(&str, &str, String)> = keep.iter().map(|p| (p.name, p.version, p.text(&keep))).collect();
+    blocks.push((name, "0.0.0", root));
+    blocks.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+    let mut out = header.to_string();
+    for (_, _, text) in blocks {
+        out.push_str("\n[[package]]\n");
+        out.push_str(&text);
+    }
+    out
+}
+
+/// One `[[package]]` entry of a lock file.
+struct Package {
+    name: &'static str,
+    version: &'static str,
+    /// Its lines before `dependencies`.
+    head: &'static str,
+    /// Each dependency as the lock file writes it: a name, followed by a
+    /// version when the file holds two versions of that name.
+    deps: Vec<&'static str>,
+}
+
+impl Package {
+    fn parse(text: &'static str) -> Package {
+        let field =
+            |key: &str| text.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix(" = \"")?.strip_suffix('"')).unwrap_or_default();
+        let (head, deps) = match text.split_once("dependencies = [\n") {
+            Some((head, rest)) => {
+                let list = rest.split_once(']').map_or(rest, |(l, _)| l);
+                (head, list.lines().filter_map(|l| l.trim().strip_prefix('"')?.strip_suffix("\",")).collect())
+            }
+            None => (text.trim_end_matches('\n'), Vec::new()),
+        };
+        Package { name: field("name"), version: field("version"), head: head.trim_end_matches('\n'), deps }
+    }
+
+    /// The entry as it reads among `all`: a dependency's version is written
+    /// only if `all` holds two versions of its name.
+    fn text(&self, all: &[&Package]) -> String {
+        let mut out = format!("{}\n", self.head);
+        if !self.deps.is_empty() {
+            out.push_str("dependencies = [\n");
+            for dep in &self.deps {
+                let name = dep.split(' ').next().unwrap_or_default();
+                let shown = if all.iter().filter(|p| p.name == name).count() > 1 { dep } else { name };
+                out.push_str(&format!(" \"{shown}\",\n"));
+            }
+            out.push_str("]\n");
+        }
+        out
+    }
+}
+
 struct Crate {
     dir: PathBuf,
     name: String,
@@ -94,24 +175,46 @@ fn prepare(programs: &[&Program], entry: &Entry, kind: &str) -> Result<Crate, St
     let lock_path = dir.join(".lock");
     let lock = std::fs::File::create(&lock_path).map_err(|e| format!("can't create {}: {e}", lock_path.display()))?;
     lock.lock().map_err(|e| format!("can't lock {}: {e}", lock_path.display()))?;
+    // dat-rt's dependencies only symbolize a trace after an error, so they
+    // build without debug info and at opt-level 1, which symbolizes as fast
+    // as 3 and builds a little faster.
     let manifest = format!(
         "[package]\nname = \"{name}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n\
          [dependencies]\ndat-rt = {{ path = {:?} }}\n\n\
          [profile.release]\nopt-level = 3\ndebug = \"line-tables-only\"\nstrip = false\npanic = \"unwind\"\nincremental = true\noverflow-checks = false\n\n\
-         [profile.dat-dist]\ninherits = \"release\"\nincremental = false\nlto = false\n\n\
+         [profile.release.package.\"*\"]\nopt-level = 1\ndebug = false\n\n\
+         [profile.release.package.dat-rt]\nopt-level = 3\ndebug = \"line-tables-only\"\n\n\
+         [profile.dat-dist]\ninherits = \"release\"\nincremental = false\nlto = false\n{DIST_DEBUG_INFO}\n\
          [workspace]\n",
         runtime_dir().display().to_string()
     );
     write_if_changed(&dir.join("Cargo.toml"), &manifest)?;
+    write_if_changed(&dir.join("Cargo.lock"), &lock_file(&name))?;
     write_if_changed(&dir.join("rust-toolchain.toml"), &format!("[toolchain]\nchannel = \"{TOOLCHAIN}\"\n"))?;
     write_if_changed(&dir.join("src/main.rs"), &emit_crate(programs, entry))?;
     Ok(Crate { dir, name, _lock: lock })
 }
 
+/// Where `dat build` executables keep the line tables their traces read. On
+/// macOS they would stay in the build's object files, so rustc writes a
+/// `.dSYM` that `dat build` puts next to the executable.
+const DIST_DEBUG_INFO: &str = if cfg!(target_os = "macos") { "split-debuginfo = \"packed\"\n" } else { "" };
+
+/// Linker arguments for `dat build` executables. Debug info is most of an
+/// executable, and `backtrace` reads zlib-compressed sections, so on Linux
+/// they're compressed: printing a trace then takes about 30 ms longer.
+const DIST_LINK_ARGS: &[&str] = if cfg!(target_os = "linux") { &["-Clink-arg=-Wl,--compress-debug-sections=zlib"] } else { &[] };
+
 fn cargo_build(c: &Crate, profile: &str) -> Result<PathBuf, String> {
     let target = cache_dir().join("target");
     let mut cmd = Command::new("cargo");
-    cmd.arg("build").arg("--quiet").arg("--profile").arg(profile).arg("--manifest-path").arg(c.dir.join("Cargo.toml"));
+    let link_args = if profile == "dat-dist" { DIST_LINK_ARGS } else { &[] };
+    // `cargo rustc` passes the arguments after `--` to the generated crate only.
+    cmd.arg(if link_args.is_empty() { "build" } else { "rustc" });
+    cmd.arg("--quiet").arg("--locked").arg("--profile").arg(profile).arg("--manifest-path").arg(c.dir.join("Cargo.toml"));
+    if !link_args.is_empty() {
+        cmd.arg("--").args(link_args);
+    }
     for var in
         ["RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR", "CARGO_ENCODED_RUSTFLAGS"]
     {
@@ -174,11 +277,59 @@ pub fn build_executable(program: &Program, out: &Path) -> Result<(), String> {
     let c = prepare(&[program], &Entry::Run, "build")?;
     let exe = cargo_build(&c, "dat-dist")?;
     std::fs::copy(&exe, out).map_err(|e| format!("can't write {}: {e}", out.display()))?;
+    if cfg!(target_os = "macos") {
+        copy_dsym(&exe, out)?;
+    }
+    Ok(())
+}
+
+/// Puts the line tables of `exe` next to its copy `out`, as `out.dSYM`,
+/// where `backtrace` looks for them.
+fn copy_dsym(exe: &Path, out: &Path) -> Result<(), String> {
+    let mut dsym = out.as_os_str().to_owned();
+    dsym.push(".dSYM");
+    let dsym = PathBuf::from(dsym);
+    let _ = std::fs::remove_dir_all(&dsym);
+    let mut built = exe.as_os_str().to_owned();
+    built.push(".dSYM");
+    let built = PathBuf::from(built);
+    if built.is_dir() {
+        return copy_dir(&built, &dsym);
+    }
+    let status = Command::new("dsymutil").arg(exe).arg("-o").arg(&dsym).status().map_err(|e| format!("can't run dsymutil: {e}"))?;
+    if !status.success() {
+        return Err(format!("dsymutil couldn't write {}", dsym.display()));
+    }
+    Ok(())
+}
+
+fn copy_dir(from: &Path, to: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("can't create {}: {e}", to.display()))?;
+    let entries = std::fs::read_dir(from).map_err(|e| format!("can't read {}: {e}", from.display()))?;
+    for entry in entries.flatten() {
+        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        if src.is_dir() {
+            copy_dir(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst).map_err(|e| format!("can't write {}: {e}", dst.display()))?;
+        }
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn lock_file_holds_dat_rt_and_its_dependencies() {
+        let lock = super::lock_file("dat_0");
+        assert!(lock.starts_with("# This file is automatically @generated by Cargo."));
+        assert!(lock.contains("\n[[package]]\nname = \"dat-rt\"\n"));
+        assert!(lock.contains("\n[[package]]\nname = \"backtrace\"\n"));
+        assert!(lock.contains("\n[[package]]\nname = \"dat_0\"\nversion = \"0.0.0\"\ndependencies = [\n \"dat-rt\",\n]\n"));
+        assert!(!lock.contains("name = \"dat-check\""));
+        assert!(lock.ends_with("]\n") || lock.ends_with("\"\n"));
+    }
+
     #[test]
     fn toolchain_matches_the_repository_pin() {
         let toml = include_str!("../../../rust-toolchain.toml");

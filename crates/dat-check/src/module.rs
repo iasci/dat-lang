@@ -34,11 +34,23 @@ pub(crate) struct Module<'a> {
     pub sigs: Vec<Sig>,
     pub by_name: HashMap<String, ir::FuncId>,
     pub bodies: Vec<Option<ir::Function>>,
+    /// Each `return` with a value in `main`, and the value: when `main`
+    /// doesn't return void, its fix rewrites them.
+    pub main_returns: Vec<(Span, ast::ExprId)>,
 }
 
 /// Checks a parsed file and lowers it. Diagnostics are appended to `diags`.
 pub fn check(sources: &SourceMap, ast: &Ast, opts: Options, diags: &mut Vec<Diagnostic>) -> Option<ir::Program> {
-    let mut m = Module { sources, file: ast.file, ast, diags, sigs: Vec::new(), by_name: HashMap::new(), bodies: Vec::new() };
+    let mut m = Module {
+        sources,
+        file: ast.file,
+        ast,
+        diags,
+        sigs: Vec::new(),
+        by_name: HashMap::new(),
+        bodies: Vec::new(),
+        main_returns: Vec::new(),
+    };
     m.collect();
     for id in 0..m.sigs.len() {
         m.check_function(ir::FuncId(id as u32));
@@ -298,10 +310,25 @@ impl<'a> Module<'a> {
             && t != Ty::Poison
         {
             let span = f.ret.as_ref().map_or(f.name.span, |r| r.span);
-            let edits = match &f.ret {
+            let mut edits = match &f.ret {
                 Some(r) => vec![dat_diag::edit(self.sources, self.file, r.span, "void")],
                 None => Vec::new(),
             };
+            // A returned value goes too; one that may do something stays, as a statement.
+            for &(stmt, value) in &self.main_returns {
+                let e = ast.expr(value);
+                let pure = matches!(
+                    e.kind,
+                    ast::ExprKind::Int(_)
+                        | ast::ExprKind::Float(_)
+                        | ast::ExprKind::Str(_)
+                        | ast::ExprKind::Bool(_)
+                        | ast::ExprKind::Null
+                        | ast::ExprKind::Name(_)
+                );
+                let after = if pure { "return;".to_string() } else { format!("{}; return;", self.text(e.span)) };
+                edits.push(dat_diag::edit(self.sources, self.file, stmt, &after));
+            }
             let mut d = Diagnostic::error(codes::BAD_MAIN, self.file, span, format!("`main` must return void, not {}", t.name()));
             if !edits.is_empty() {
                 d = d.with_fix("return void", dat_diag::Applicability::Review, edits);

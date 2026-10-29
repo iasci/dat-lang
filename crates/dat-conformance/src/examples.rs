@@ -14,7 +14,9 @@
 //! the interpreter and with `--compiled`, and both must match. If `X.fixed`
 //! exists, the safe fixes from `dat check --json` are applied mechanically
 //! and must give exactly that text, as must `dat fix`; the fixed program must
-//! check clean and give the `run (fixed)` section in both modes.
+//! check clean and give the `run (fixed)` section in both modes. If
+//! `X.reviewed` exists, each diagnostic's preferred fix, `review` ones
+//! included, must give exactly that text, and it must check clean.
 
 use crate::Opts;
 use crate::run::{Outcome, dat, dat_start, diff, outcome};
@@ -168,11 +170,24 @@ impl Report {
 
 /// Applies the preferred safe fix of every diagnostic in a `--json` document to `text`.
 fn apply_json_fixes(json: &str, text: &str) -> Result<String, String> {
+    apply_fixes(json, text, |f| f.get("applicability").and_then(Json::as_str) == Some("safe"))
+}
+
+/// Applies each diagnostic's preferred fix if it's `safe` or `review`.
+fn apply_reviewed_fixes(json: &str, text: &str) -> Result<String, String> {
+    apply_fixes(json, text, |f| {
+        f.get("isPreferred").and_then(Json::as_bool) == Some(true)
+            && matches!(f.get("applicability").and_then(Json::as_str), Some("safe" | "review"))
+    })
+}
+
+/// Applies the first fix of each diagnostic that `pick` accepts.
+fn apply_fixes(json: &str, text: &str, pick: impl Fn(&Json) -> bool) -> Result<String, String> {
     let doc = Json::parse(json)?;
     let mut edits: Vec<(usize, usize, String, String)> = Vec::new();
     for d in doc.get("diagnostics").map(Json::as_arr).unwrap_or(&[]) {
         let fixes = d.get("fixes").map(Json::as_arr).unwrap_or(&[]);
-        let Some(fix) = fixes.iter().find(|f| f.get("applicability").and_then(Json::as_str) == Some("safe")) else { continue };
+        let Some(fix) = fixes.iter().find(|f| pick(f)) else { continue };
         for e in fix.get("edits").map(Json::as_arr).unwrap_or(&[]) {
             let n = |k: &str| e.get(k).and_then(Json::as_i64).unwrap_or(0) as usize;
             let s = |k: &str| e.get(k).and_then(Json::as_str).unwrap_or("").to_string();
@@ -344,6 +359,10 @@ pub fn run(opts: &Opts) -> bool {
             }
             blessed.push((s.command.clone(), first));
         }
+        let reviewed_path = path.with_extension("reviewed");
+        if reviewed_path.exists() {
+            reviewed_flow(path, &reviewed_path, opts, &mut report, &rel);
+        }
         if opts.bless {
             let text = write_golden(file, &blessed);
             std::fs::write(&golden_path, text).expect("write golden");
@@ -387,6 +406,32 @@ fn fixed_flow(path: &Path, fixed_path: &Path, opts: &Opts, report: &mut Report, 
     let clean = dat(&tmp, &["check", file], &[]);
     report.check(format!("{rel}: the fixed program checks clean"), &ok(""), &clean, opts.verbose);
     run_section(&tmp, file, "run", opts)
+}
+
+/// The `review` fixes, applied as an agent would: they must give `X.reviewed`,
+/// which checks clean.
+fn reviewed_flow(path: &Path, reviewed_path: &Path, opts: &Opts, report: &mut Report, rel: &str) {
+    let dir = path.parent().unwrap();
+    let file = path.file_name().unwrap().to_str().unwrap();
+    let src = std::fs::read_to_string(path).unwrap_or_default();
+    let expected = std::fs::read_to_string(reviewed_path).unwrap_or_default();
+    let ok = |o: &str| Outcome { status: 0, stdout: o.to_string(), stderr: String::new() };
+    let check = dat(dir, &["check", "--json", file], &[]);
+    match apply_reviewed_fixes(&check.stderr, &src) {
+        Ok(fixed) => {
+            report.check(format!("{rel}: review fixes give {}", reviewed_path.display()), &ok(&expected), &ok(&fixed), opts.verbose)
+        }
+        Err(e) => {
+            println!("FAIL  {rel}: can't apply the review fixes: {e}");
+            report.failed.push(rel.to_string());
+        }
+    }
+    let tmp = opts.root.join("target/conformance-tmp").join(format!("{}-reviewed", file.trim_end_matches(".dat")));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(tmp.join(file), &expected).unwrap();
+    let clean = dat(&tmp, &["check", file], &[]);
+    report.check(format!("{rel}: the reviewed program checks clean"), &ok(""), &clean, opts.verbose);
 }
 
 /// The differential harness must notice a wrong `+` in the interpreter.

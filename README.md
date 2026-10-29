@@ -22,6 +22,9 @@ target/release/dat fix examples/fib/bad_fib.dat          # applies the safe fixe
 target/release/dat build examples/fib/fib.dat -o fib     # a native executable
 ```
 
+The first compiled run on a machine builds dat-rt and its dependencies,
+which takes about 10 seconds; later runs reuse them.
+
 `reference/21-command-line.md` describes the commands, their output and
 their exit statuses. Two commands exist for looking inside: `dat ir <file>`
 prints the typed IR, and `dat rust <file>` prints the generated Rust.
@@ -61,11 +64,14 @@ Neither backend may depend on the parser or the checker;
 Runtime errors are `DatError` values. The interpreter returns them as `Err`.
 Generated code throws them with `resume_unwind`, and `try` becomes
 `dat_rt::catch` around a closure, so the error path costs nothing until
-something is thrown. For traces, each generated function builds a two-word
-`Frame` record: a pointer to its caller's record and the location of the
-call. It passes the record to the functions it calls, and a throw walks the
-chain. The interpreter builds the same trace while an error propagates, so
-both modes print the same dat-only trace:
+something is thrown. Generated functions are plain Rust and keep no trace
+bookkeeping. When an error is thrown and no running `try` handles its type,
+dat-rt records the return addresses on the native stack with the
+[`backtrace`](https://github.com/rust-lang/backtrace-rs) crate. Printing the
+trace resolves each distinct address once and maps its line and column in
+the generated `main.rs` to a dat call site, through a table dat-codegen
+writes into the crate. The interpreter builds the same trace while an error
+propagates, so both modes print the same dat-only trace:
 
 ```
 RangeError: int overflow: 4660046610375530309 + 7540113804746346429
@@ -73,11 +79,19 @@ RangeError: int overflow: 4660046610375530309 + 7540113804746346429
   at main (overflow_uncaught.dat:17:9)
 ```
 
+Every dat call has to stay a Rust frame with its own location, so generated
+crates turn off LLVM's function merging, branch merging and tail calls.
+Function merging is only switchable with `-Zmerge-functions=disabled`, which
+`RUSTC_BOOTSTRAP=1` allows on the pinned stable toolchain. `dat build`
+keeps line tables in the executable: compressed on Linux, and in a `.dSYM`
+next to the executable on macOS.
+
 Deep recursion throws a catchable `StackOverflowError`. dat code runs on a
-thread dat-rt creates with a known stack, and recursive functions compare the
-address of their caller's record with a limit on entry. Every program can
-nest at least 10,000 calls; measured, the interpreter goes past 160,000 and
-compiled code past 1.2 million.
+thread dat-rt creates with a known stack (32 MiB compiled, 512 MiB in the
+interpreter), and recursive functions compare the address of a local with a
+limit before their first call. Every program can nest at least 10,000 calls;
+measured, the interpreter goes past 160,000, and compiled code past two
+million simple calls and 128,000 of the largest kind measured.
 
 ## Testing
 
@@ -88,6 +102,7 @@ target/release/dat-conformance examples           # examples/**/*.dat against th
 target/release/dat-conformance self-test          # a wrong `+` in the interpreter must be caught
 target/release/dat-conformance spec               # the code blocks in reference/
 target/release/dat-conformance structure          # crate graph; no unsafe or RefCell in generated Rust
+target/release/dat-conformance concurrency        # two compiled runs of one file at once
 target/release/dat-conformance perf               # latency budgets and speed gates
 ```
 
@@ -95,8 +110,10 @@ target/release/dat-conformance perf               # latency budgets and speed ga
   `X.golden`, one section per command. `run` and `test` sections must give
   the same stdout, stderr and exit status on the interpreter and compiled.
   `X.fixed` is the expected text after applying the safe fixes from
-  `dat check --json`. `--bless` rewrites the goldens from the interpreter.
-- **Spec blocks.** The runner extracts all 167 code blocks in `reference/`
+  `dat check --json`, and `X.reviewed` the text after applying each
+  diagnostic's preferred safe or review fix; either result must check clean.
+  `--bless` rewrites the goldens from the interpreter.
+- **Spec blocks.** The runner extracts all 179 code blocks in `reference/`
   and reads the reference's own comments as expectations: `// ❌ E0301:` with
   its `fix:` lines, `print(x); // output`, `expr // value` and
   `// throws RangeError`. Each block becomes one case per ❌ line plus a

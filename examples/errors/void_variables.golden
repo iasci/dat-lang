@@ -1,0 +1,40 @@
+# Golden results for void_variables.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0252]: a variable can't have type void
+ --> void_variables.dat:3:10
+3 |   let x: void;
+  |          ^^^^ no value has this type
+
+error[E0252]: a variable can't have type never
+ --> void_variables.dat:4:12
+4 |   const y: never;
+  |            ^^^^^ no value has this type
+
+error[E0252]: a variable can't have type void
+ --> void_variables.dat:5:10
+5 |   let z: void = 5;
+  |          ^^^^ no value has this type
+3 errors
+
+=== run
+status: 2
+--- stderr
+error[E0252]: a variable can't have type void
+ --> void_variables.dat:3:10
+3 |   let x: void;
+  |          ^^^^ no value has this type
+
+error[E0252]: a variable can't have type never
+ --> void_variables.dat:4:12
+4 |   const y: never;
+  |            ^^^^^ no value has this type
+
+error[E0252]: a variable can't have type void
+ --> void_variables.dat:5:10
+5 |   let z: void = 5;
+  |          ^^^^ no value has this type
+3 errors

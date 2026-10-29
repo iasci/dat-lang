@@ -1,0 +1,13 @@
+// `main` declared to return a value, as in C: one E0661, and its fix
+// rewrites the returns, keeping a returned call as a statement.
+function answer(): int {
+  return 42;
+}
+
+function main(): int {
+  print("starting");
+  if (answer() > 40) {
+    return answer();
+  }
+  return 0;
+}

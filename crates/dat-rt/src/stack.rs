@@ -10,12 +10,11 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The stack of the thread that runs compiled dat code. Generated frames are
-/// small (16 bytes for a simple recursive function), so 16 MiB holds about a
-/// million of them, and 20,000 or more of the largest, a function with a
-/// `try` and strings. It isn't larger because an error that escapes is
-/// traced by reading every native frame through std, which costs about 3 µs
-/// and 500 bytes per frame.
-pub const STACK_SIZE: usize = 16 << 20;
+/// small (16 bytes for a simple recursive function), so 32 MiB holds two
+/// million or more of them, and 128,000 or more of the largest measured, a
+/// function with a `try` and strings. A larger stack goes deeper, but
+/// catching an overflow then takes longer, since unwinding grows with depth.
+pub const STACK_SIZE: usize = 32 << 20;
 
 const RED_ZONE: usize = 256 << 10;
 
