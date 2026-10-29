@@ -22,10 +22,10 @@ error[E0301]: can't add string and int
   --> types.dat:13:17
 13 |   const total = "Total: " + count + 1;
    |                 ^^^^^^^^^^^^^^^^^^^^^ `count` is an int
-option: join the values as text, as TypeScript does
-13 |   const total = `Total: ${count}${1}`;
 option: add the numbers first
 13 |   const total = `Total: ${count + 1}`;
+option: join the values as text
+13 |   const total = `Total: ${count}${1}`;
 
 error[E0250]: expected an int, found a string
   --> types.dat:14:14
@@ -71,10 +71,10 @@ error[E0301]: can't add string and int
   --> types.dat:13:17
 13 |   const total = "Total: " + count + 1;
    |                 ^^^^^^^^^^^^^^^^^^^^^ `count` is an int
-option: join the values as text, as TypeScript does
-13 |   const total = `Total: ${count}${1}`;
 option: add the numbers first
 13 |   const total = `Total: ${count + 1}`;
+option: join the values as text
+13 |   const total = `Total: ${count}${1}`;
 
 error[E0250]: expected an int, found a string
   --> types.dat:14:14

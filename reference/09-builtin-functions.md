@@ -69,7 +69,7 @@ Like every runtime error, it can be caught. See [Errors](./12-errors.md) for whe
 | `Math.max(...values)` | `(...values: int) => int`<br>`(...values: float) => float` | Largest value. Throws a `RangeError` when given none. |
 | `Math.floor(x)` | `(x: float) => int` | Round down |
 | `Math.ceil(x)` | `(x: float) => int` | Round up |
-| `Math.round(x)` | `(x: float) => int` | Round to nearest; halves round up, as in TypeScript: `Math.round(-2.5)` is `-2` |
+| `Math.round(x)` | `(x: float) => int` | Round to nearest; halves round up: `Math.round(-2.5)` is `-2` |
 | `Math.trunc(x)` | `(x: float) => int` | Round toward zero |
 | `Math.sqrt(x)` | `(x: float) => float` | Square root |
 | `Math.pow(base, exponent)` | `(base: float, exponent: float) => float` | `base` to the power of `exponent` |

@@ -17,7 +17,7 @@ dat supports `+`, `-`, `*`, `/`, `%` and unary `-`.
 10 / 5       // 2.0, a float
 ```
 
-`/` always returns a `float`, as it does in TypeScript. For integer division, use `Math.trunc(a / b)` or `Math.floor(a / b)`. When these are applied directly to `a / b` with two `int` operands, the compiler computes the result exactly in integer arithmetic.
+`/` always returns a `float`. For integer division, use `Math.trunc(a / b)` or `Math.floor(a / b)`. When these are applied directly to `a / b` with two `int` operands, the compiler computes the result exactly in integer arithmetic.
 
 ```
 const middle = Math.floor((low + high) / 2);   // int
@@ -108,7 +108,7 @@ Point { x: 1, y: 2 } == Point { x: 1, y: 2 }  // true
 !("guest" in roles)       // parentheses needed: `!` binds tighter than `in`
 ```
 
-TypeScript's `in` checks keys, so in TypeScript `2 in [10, 20, 30]` is `true` because index 2 exists. In dat, `in` checks elements, so it's `false`. For maps, both check keys. `for...in` isn't valid in dat; use [`for...of`](./07-control-flow.md#loops).
+`in` checks a list's elements, so `2 in [10, 20, 30]` is `false`. For a map, it checks keys. `for...in` isn't valid in dat; use [`for...of`](./07-control-flow.md#loops).
 
 ## Operators on Your Own Types
 
@@ -156,4 +156,4 @@ function label(text: string): string {
 print(label("a") + label("b"));   // prints a, then b, then ab
 ```
 
-This is the order TypeScript uses. Both run modes follow it exactly.
+Both run modes follow this order exactly.

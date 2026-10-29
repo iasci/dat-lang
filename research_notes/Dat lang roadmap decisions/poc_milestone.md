@@ -431,7 +431,7 @@ With a guard: `10000`, then `deep recursion caught`, exit status 0 in both modes
 ### Unspecified behaviour the PoC runs into (owner questions, not settled in code)
 1. The text of the `int` overflow `RangeError` message. The spec gives a format only for index errors.
 2. Where `print` writes (stdout, presumably) and where uncaught errors go (stderr?). The stack-trace format.
-3. Operand evaluation order. Only associativity is specified. Left to right matches Rust and TypeScript.
+3. Operand evaluation order. Only associativity is specified. Left to right matches Rust, the compile target.
 4. Stack overflow: the type (owner leans to a new `StackOverflowError`; V8 uses `RangeError`), and whether the depth is deterministic across modes.
 5. Whether `try?` applies to arithmetic (`try? a + b`) or to a call of a non-throwing function. The spec lists `xs[i]`, `pop()` and `m[key]` as built-in operations.
 6. Whether a non-`void` expression statement may discard its result, and whether `_` may name a catch variable.
@@ -514,7 +514,7 @@ Each decision lists the options, the evidence for and against each, a recommenda
 ### D4. Overflow message, uncaught-error output and evaluation order
 - **Options:** leave them implementation-defined, or specify them.
 - **Evidence:** the Csmith lesson: differential testing finds bugs only when behaviour is fully defined. Two modes that share dat-rt would print the same text anyway, but the spec is the golden source.
-- **Recommendation:** specify `RangeError: int overflow: <a> <op> <b>`, uncaught errors on stderr in the format shown in section 5, and left-to-right operand evaluation (matching Rust and TypeScript).
+- **Recommendation:** specify `RangeError: int overflow: <a> <op> <b>`, uncaught errors on stderr in the format shown in section 5, and left-to-right operand evaluation (matching Rust).
 - **Cost:** trivial.
 - **Spec change:** yes, owner question (additions, not changes to designed features).
 

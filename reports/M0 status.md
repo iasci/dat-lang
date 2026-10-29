@@ -107,7 +107,7 @@ A separate review agent probed the build with about 140 programs, comparing the 
 - Nesting thousands of levels deep crashed rustc, and 20,000 levels crashed `dat` itself. Now `dat` runs the compiler on a 256 MiB stack, rustc gets the same, and more than 8,000 levels is a syntax error. 7,000 nested parentheses run in both modes.
 - `export function f(x: int) { ... }` was accepted without a return type, which §06 requires. It is now E0655, with the inferred type as a safe fix.
 
-The review also changed two smaller behaviours. A `let` that redeclares a parameter is now E1402, as in TypeScript. A failed `assert` with a message now shows `message:` in its `FAIL` block.
+The review also changed two smaller behaviours. A `let` that redeclares a parameter is now E1402, because the parameters and the function body share one scope. A failed `assert` with a message now shows `message:` in its `FAIL` block.
 
 The review's last suspicion was real. Generated crates are keyed by path, so a second `--compiled` run of a file could replace the first one's `main.rs` mid-build. A lock now holds from writing the source until the program starts, and `dat-conformance concurrency` checks it.
 
@@ -148,7 +148,7 @@ Questions 1–39 of the research report still stand. Questions 45–49 were sett
 | 45 | The message of `StackOverflowError` | `too many nested calls`. It leaves out the depth, which differs between the modes and between machines. |
 | 46 | `assert(cond, message)` | `e.message` is the given message, and `assertion failed: <condition as written>` without one. |
 | 47 | The overflow message with a negative right operand | `-9223372036854775808 + -1`, following the template. |
-| 48 | The E0301 fix for `"Total: " + count + 1` | Two options and no safe fix, because the meaning is ambiguous: `` `Total: ${count}${1}` ``, TypeScript's meaning, first, and `` `Total: ${count + 1}` `` second. Chains that alternate strings and values keep their safe fix. |
+| 48 | The E0301 fix for `"Total: " + count + 1` | Two options and no safe fix, because the meaning is ambiguous: `` `Total: ${count + 1}` ``, the likelier intent, first, and `` `Total: ${count}${1}` `` second. Chains that alternate strings and values keep their safe fix. |
 | 49 | A warning for a file with neither `main` nor tests | No warning: such files are libraries. |
 | 50 | Function merging needs `RUSTC_BOOTSTRAP=1` on stable | The owner chose to keep it on the pinned stable toolchain, over a pinned nightly or dropping the switch. |
 | 51 | Outside libraries | Allowed when secure, without significant performance cost, and usable as they are without workarounds; otherwise fork or write our own (`AGENTS.md`). `backtrace` is the first. |
@@ -156,7 +156,7 @@ Questions 1–39 of the research report still stand. Questions 45–49 were sett
 ## What M1 builds on
 
 - **The parser** already accepts lists, maps, arrow functions, `match`, member calls, `?.`, `??`, `is`/`as`, generics and struct declarations, so M1 adds checker and IR support without new syntax work.
-- **The diagnostic record, codes and fixes** are in their final schema. Every code has a ❌ example in the spec. M1's TypeScript-habit diagnostics (`===` is already one) follow the same pattern.
+- **The diagnostic record, codes and fixes** are in their final schema. Every code has a ❌ example in the spec. M1's diagnostics for syntax dat doesn't have, like `===` (already one), follow the same pattern.
 - **`dat_rt::Str`** is the opaque string type the plan recommends: `Rc<String>` with append in place. The small-string representation can replace it without touching generated code.
 - **The interpreter's typed fast paths** extend to `float`.
 - **The spec ratchet** turns M1's features into passing cases automatically, because the extractor already reads expressions with expected values (`10 % 3 // 1`) and `// throws` lines.

@@ -261,7 +261,7 @@ All numbers in this section are from [bench] unless a link says otherwise.
 - `swap_remove` is O(1) but moves the last entry into the hole, so the order is no longer insertion order.
 - `shift_remove` keeps the order but is O(n): 1.39 s for 10k removals from a 100k map, against 62 µs for `swap_remove`.
 
-dat's TypeScript heritage and Python's dict both imply "delete keeps the remaining order; re-adding goes to the end". The spec doesn't say this. Hashing with foldhash is about 2× faster than SipHash, and because iteration follows insertion order, the hasher and its random seed can't change program output in either run mode.
+Iterating in insertion order suggests "delete keeps the remaining order; re-adding goes to the end". The spec doesn't say this. Hashing with foldhash is about 2× faster than SipHash, and because iteration follows insertion order, the hasher and its random seed can't change program output in either run mode.
 
 ### Cited Findings
 **What indexmap documents**
@@ -827,7 +827,7 @@ Each decision lists the options, evidence with numbers, a recommendation, its co
   - `Vec`: `shift` is O(n), so a queue loop is O(n²).
   - a ring buffer (`VecDeque`) inside `dat_rt::List`: O(1) at both ends; `iter_mut` and slices become two slices.
   - document the cost.
-- **Recommendation:** decide in M2 with a benchmark. A BFS loop using `shift()` is idiomatic TypeScript, and agents will write it.
+- **Recommendation:** decide in M2 with a benchmark. Agents write BFS loops with `shift()`.
 - **Spec change:** none.
 
 ---

@@ -246,7 +246,8 @@ impl<'m, 'a> Body<'m, 'a> {
         keyword: Option<Span>,
         init: Option<ExprId>,
     ) -> ir::LocalId {
-        // A function body shares its scope with the parameters, as in TypeScript.
+        // The parameters and the function body share one scope, so a `let` can't
+        // redeclare a parameter.
         if self.scopes.len() == 2 && self.scopes[0].iter().any(|v| v.name == name.name) {
             let d = self
                 .err(codes::REDECLARED, name.span, format!("{} is already declared", name.name))
@@ -1089,8 +1090,8 @@ impl<'m, 'a> Body<'m, 'a> {
     /// operands have already been combined into one value of type `prefix`.
     ///
     /// Two ints next to each other after a string, as in `"Total: " + count
-    /// + 1`, may mean TypeScript's "Total: 31" or the sum, so both are
-    /// options and `dat fix` applies neither.
+    /// + 1`, may mean the sum or "Total: 31", so both are options, the sum
+    /// first as the likelier intent, and `dat fix` applies neither.
     fn string_plus(&mut self, operands: &[ExprId], tys: &[Ty], at: usize, prefix: Ty, next: Ty, whole: Span) {
         let ast = self.ast();
         let (bad, bad_ty) = if prefix == Ty::Str {
@@ -1146,8 +1147,11 @@ impl<'m, 'a> Body<'m, 'a> {
             bad_ty.a_name()
         ));
         let d = if ambiguous {
-            d.with_fix("join the values as text, as TypeScript does", Applicability::Option, vec![self.edit(whole, template(false))])
-                .with_fix("add the numbers first", Applicability::Option, vec![self.edit(whole, template(true))])
+            d.with_fix("add the numbers first", Applicability::Option, vec![self.edit(whole, template(true))]).with_fix(
+                "join the values as text",
+                Applicability::Option,
+                vec![self.edit(whole, template(false))],
+            )
         } else {
             d.with_fix("use a template string", Applicability::Safe, vec![self.edit(whole, template(false))])
         };

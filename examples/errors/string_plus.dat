@@ -1,6 +1,6 @@
 // E0301's fix. A `+` chain that alternates strings and other values gets a
 // safe template-string fix. Two ints next to each other after a string may
-// mean TypeScript's "Total: 31" or the sum, so both are options.
+// mean the sum or "Total: 31", so both are options.
 
 function main(): void {
   const count = 3;

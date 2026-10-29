@@ -16,7 +16,7 @@ compiler added, approved with their ❌ examples at M0, end in 50–99.
 | E0205 | spec §02 | const must be initialized | `const x: T = _;` (review) |
 | E0250 | spec §02 | A value doesn't have the expected type | `${x}` for an int or bool where a string is expected (safe) |
 | E0252 | spec §02 | A variable or parameter can't have type `void` or `never` | — |
-| E0301 | spec §03 | Can't add string and int (or bool, or an error) | a template string for the whole `+` chain (safe); when two ints are next to each other after a string, two options: join them as TypeScript does, or add them first |
+| E0301 | spec §03 | Can't add string and int (or bool, or an error) | a template string for the whole `+` chain (safe); when two ints are next to each other after a string, two options: add them first, or join them as text |
 | E0303 | spec §03 | `++` / `--` is a statement | `let y = i; i++;` (safe) |
 | E0304 | spec §03 | No prefix form | `i++` (safe) |
 | E0350 | spec §03 | An operator doesn't apply to these operand types | — |

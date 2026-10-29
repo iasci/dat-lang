@@ -80,7 +80,7 @@ These need a list that can be modified: a `let` variable, a `mut` parameter, or 
 | `zip(other)` | `(other: list<U>) => list<[T, U]>` | Pairs of elements at the same index, as long as the shorter list |
 | `groupBy(key)` | `(key: (item: T) => K) => map<K, list<T>>` | Elements grouped by a hashable key, keeping their order |
 
-The callbacks of `map`, `filter`, `flatMap`, `forEach`, `find`, `findIndex`, `some`, `every` and `count` can take the element's index as a second parameter, as in TypeScript: `xs.map((x, i) => ...)`.
+The callbacks of `map`, `filter`, `flatMap`, `forEach`, `find`, `findIndex`, `some`, `every` and `count` can take the element's index as a second parameter: `xs.map((x, i) => ...)`.
 
 `at`, `pop` and `shift` throw instead of returning `null`, so a `null` result always means a stored `null`. To get `null` instead of the error, mark the call with [`try?`](./12-errors.md#discarding-or-asserting-try-and-try):
 

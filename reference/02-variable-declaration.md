@@ -28,7 +28,7 @@ admin.tags.push("ops");    // ❌ E0201: `admin` is const and can't be modified
                            //    fix (review, declaration): let admin = User { name: "Lin", tags: [] };
 ```
 
-This differs from TypeScript, where `const` only prevents reassignment. In dat, mutability belongs to the variable, not to the type, so there are no separate read-only collection types.
+`const` prevents modification as well as reassignment. Mutability belongs to the variable, not to the type, so there are no separate read-only collection types.
 
 Use `const` by default, and `let` when the value has to change.
 

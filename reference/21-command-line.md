@@ -63,7 +63,7 @@ fix: compare with null
 
 A code's first two digits name the section that defines its rule. Two codes belong to no section:
 
-- **`E0001`** is a syntax error. Where the fix is certain, such as a missing `;` or TypeScript's `===`, the error comes with it:
+- **`E0001`** is a syntax error. Where the fix is certain, such as a missing `;` or `===` for `==`, the error comes with it:
 
   ```
   const answer = 42;

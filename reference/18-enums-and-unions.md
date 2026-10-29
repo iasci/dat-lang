@@ -41,7 +41,7 @@ shape = Square { side: 2.0 };
 const id: Id = 42;
 ```
 
-A union of structs takes the place of TypeScript's discriminated unions. There's no `kind` field, because the struct's type is the tag. When the expected type is a union, a struct literal must name its struct: `Circle { radius: 1.0 }`, not `{ radius: 1.0 }`.
+A union of structs needs no tag field such as `kind`, because the struct's type is the tag. When the expected type is a union, a struct literal must name its struct: `Circle { radius: 1.0 }`, not `{ radius: 1.0 }`.
 
 Unions are flattened and deduplicated, and member order doesn't matter: `type A = int | string; type B = A | null;` makes `B` the same type as `string | int | null`. `T?` is shorthand for `T | null`.
 

@@ -264,7 +264,7 @@ Some copies remain by design, so agents need to see them. Swift needed a languag
 
 - dat-rt counts copy-on-write copies and bytes by source location in both modes, and reports them through `dat test --report-copies` and the JSON diagnostics;
 - conformance cases check complexity by running at n and 4n;
-- an M2 benchmark decides whether `dat_rt::List` uses a ring buffer, since `shift()` on a `Vec` makes quadratic the BFS loops that agents write out of TypeScript habit.
+- an M2 benchmark decides whether `dat_rt::List` uses a ring buffer, since `shift()` on a `Vec` makes the BFS loops agents write with it quadratic.
 
 ## Diagnostics: one compact text format, and an agent benchmark by M2
 
@@ -306,7 +306,7 @@ Applicability should have three levels, `safe`, `review` and `option`, following
 
 Teaching dat to agents should rely on the compiler more than on documents. Repository context files raised agent cost by more than 20% with no gain in success ([AGENTS.md study](https://arxiv.org/pdf/2602.11988)). In unfamiliar languages, distilled text guidance didn't help weaker agents, while working helper code did ([esolang study](https://arxiv.org/abs/2606.10933)). The spec is about 95 KB, roughly 20–25k tokens. A better package has two parts:
 
-- a 1–2k-token "dat for TypeScript developers" sheet of ❌/✅ pairs, shipped in the binary;
+- a 1–2k-token dat sheet of ❌/✅ pairs, shipped in the binary;
 - a dedicated diagnostic, with a fix, for each TypeScript habit: `===`, `class`, `function` expressions, `any`, `undefined`, `var`, truthiness, and `x++` used as an expression.
 
 The literature can't settle any of these questions for a new language: fix lines or not, all errors or only the first, text or JSON, docs in context or not. So the agent benchmark has to move from M7 to a pilot at M1–M2. The design borrows the 2026 tokenmaxxing method:
@@ -750,7 +750,7 @@ Status values: **Settled** means the owner decided it. **Adopt** means it is rec
 | 48 | Codes and `dat explain` | Stable category codes; `dat explain` generated from `reference/` | rustc `--explain` | M0 scheme, M7 freeze | Settled (Q37 answered): codes numbered by spec section |
 | 49 | Error recovery | One diagnostic per root cause; cap of 50; deterministic order | pylint feedback 49.2% against 53.1% generic | M1–M6 | Adopt |
 | 50 | `dat test` behaviour | Checks first; exit codes 0/1/2 | `go test` runs vet; Ruff exit codes | M1 | Adopt (Q31 open; Q32 answered) |
-| 51 | Teaching agents | Compact TypeScript-difference sheet plus TypeScript-habit diagnostics | context files +20% cost, no gain | M1–M3 | Adopt (Q38) |
+| 51 | Teaching agents | Compact ❌/✅ sheet plus TypeScript-habit diagnostics | context files +20% cost, no gain | M1–M3 | Adopt (Q38) |
 | 52 | Agent benchmark | Pilot of about 20 tasks at M1–M2; full suite at M7 | no study isolates fix lines | M1–M2 | Adopt |
 | 53 | LSP | CLI first; LSP as a thin adapter at M7 | agents loop through the CLI | M7 | Adopt |
 

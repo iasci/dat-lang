@@ -205,7 +205,7 @@ More documentation in context is not automatically better. Repository context fi
 - **Benchmark escape behavior.** Strong agents may write Python generators that emit dat, or prototype in Python. The benchmark should record that behavior and not just penalize it. A fast dat interpreter with a REPL or `dat run` on a single file makes prototyping in dat itself cheap.
 
 ### Gaps
-- I found no study that measures LLM agents writing a new statically typed, mainstream-style language (as opposed to esoteric or formal languages) with documentation supplied in context. dat's TypeScript resemblance is a bet that transfer from TypeScript dominates. That bet is untested, and the benchmark should test it against a TypeScript baseline.
+- I found no study that measures LLM agents writing a new statically typed, mainstream-style language (as opposed to esoteric or formal languages) with documentation supplied in context. dat's TypeScript-inspired syntax is a bet that agents' familiarity with that syntax carries over. That bet is untested, and the benchmark should test it against a TypeScript baseline.
 - I found no measurements of whether llms.txt improves agent outcomes.
 
 ---
@@ -227,7 +227,7 @@ Public benchmarks don't measure what dat needs. They test known languages, have 
 
 ### Inferences (proposed design for the dat benchmark)
 - **Task families.** Every task has hidden tests that run with `dat test` on the interpreter and `--compiled`, a reference solution, and where possible a TypeScript twin as the baseline.
-  - A. **Spec-feature tasks.** About two per spec section: implement a function where dat departs from TypeScript, such as copy semantics, `mut`, `try`, narrowing, `int`/`float`, or exhaustive `match`.
+  - A. **Spec-feature tasks.** About two per spec section: implement a function that exercises a dat rule agents tend to get wrong, such as copy semantics, `mut`, `try`, narrowing, `int`/`float`, or exhaustive `match`.
   - B. **Repair tasks.** Code seeded with errors drawn from the 37 ❌ cases and from TypeScript habits. These measure diagnostics most directly.
   - C. **Failing-test tasks.** Runtime errors and assert failures, which measure runtime error and test output.
   - D. **Multi-file tasks** (from M6): add a feature across modules.
@@ -458,7 +458,7 @@ Format for each decision: options, evidence for and against, recommendation, cos
 ### D8. Teaching dat to agents (in-context docs) and diagnostics for TypeScript habits
 - **Options**
   - (a) Point agents at the full spec (about 95 KB, about 20–25k tokens).
-  - (b) A compact "dat for TypeScript developers" sheet of 1–2k tokens, made of ❌/✅ pairs, shipped in the binary (`dat guide`) and referenced from a generated AGENTS.md snippet and an llms.txt.
+  - (b) A compact dat sheet of 1–2k tokens, made of ❌/✅ pairs, shipped in the binary (`dat guide`) and referenced from a generated AGENTS.md snippet and an llms.txt.
   - (c) No docs; rely on diagnostics.
   - (d) (b) plus a dedicated diagnostic with a fix for every common TypeScript habit.
 - **Evidence**
