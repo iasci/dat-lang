@@ -1,6 +1,8 @@
 # Every push and pull request: build, unit tests, lints, and the conformance
 # runner in both run modes on Linux and macOS. A separate job on Linux runs
-# the latency budgets and speed gates (M0 exit criteria 9 and 13-16).
+# the latency budgets and speed gates (M0 exit criteria 9 and 13-16). Shared
+# runners are noisy, so it fails only at twice a limit; the numbers that
+# count come from the reference machine.
 name: CI
 
 on:
@@ -77,7 +79,7 @@ jobs:
       - name: Measure
         run: |
           set -o pipefail
-          target/release/dat-conformance perf | tee perf.txt
+          target/release/dat-conformance perf --shared-runner | tee perf.txt
       - name: Job summary
         if: always()
         run: |

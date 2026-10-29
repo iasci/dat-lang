@@ -1,9 +1,12 @@
 //! Latency budgets and speed gates (M0 exit criteria 9 and 13–16).
 //!
 //! Every measurement is wall time including process start: the median of
-//! `RUNS` runs after `WARMUP` unmeasured ones. Latency budgets hard-fail at
-//! twice the budget, since shared runners are noisy; speed gates compare two
-//! programs measured in the same job, so they fail at the gate itself.
+//! `RUNS` runs after `WARMUP` unmeasured ones. The programs a gate compares
+//! run interleaved, one run of each in turn, so noise that comes and goes
+//! hits both sides alike. The numbers that count come
+//! from the reference machine, where every budget and gate fails at its
+//! limit. Shared CI runners are too noisy for that, so with
+//! `--shared-runner` a result fails only at twice its limit.
 
 use crate::Opts;
 use crate::run::dat_binary;
@@ -32,6 +35,32 @@ fn time(cmd: &mut Command, runs: usize) -> Result<Duration, String> {
     Ok(samples[samples.len() / 2])
 }
 
+/// The median time of each command, running them in turn `runs` times.
+fn time_interleaved(cmds: &mut [&mut Command], runs: usize) -> Result<Vec<Duration>, String> {
+    let mut samples = vec![Vec::with_capacity(runs); cmds.len()];
+    for i in 0..WARMUP + runs {
+        for (cmd, s) in cmds.iter_mut().zip(&mut samples) {
+            cmd.stdout(Stdio::null()).stderr(Stdio::null());
+            let start = Instant::now();
+            let status = cmd.status().map_err(|e| format!("{cmd:?}: {e}"))?;
+            let t = start.elapsed();
+            if !status.success() && status.code() != Some(1) {
+                return Err(format!("{cmd:?} exited with {status}"));
+            }
+            if i >= WARMUP {
+                s.push(t);
+            }
+        }
+    }
+    Ok(samples
+        .into_iter()
+        .map(|mut s| {
+            s.sort();
+            s[s.len() / 2]
+        })
+        .collect())
+}
+
 fn ms(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
@@ -39,31 +68,32 @@ fn ms(d: Duration) -> f64 {
 struct Gates {
     failed: Vec<String>,
     soft: Vec<String>,
+    shared_runner: bool,
 }
 
 impl Gates {
-    fn budget(&mut self, what: &str, took: Duration, budget_ms: f64) {
-        let t = ms(took);
-        let verdict = if t <= budget_ms {
+    /// The verdict for `value` against `limit`, recording a failure.
+    fn judge(&mut self, what: &str, value: f64, limit: f64) -> &'static str {
+        if value <= limit {
             "ok"
-        } else if t <= 2.0 * budget_ms {
+        } else if self.shared_runner && value <= 2.0 * limit {
             self.soft.push(what.to_string());
-            "over budget"
+            "over, within 2x on a shared runner"
         } else {
             self.failed.push(what.to_string());
-            "FAIL (over 2x budget)"
-        };
+            "FAIL"
+        }
+    }
+
+    fn budget(&mut self, what: &str, took: Duration, budget_ms: f64) {
+        let t = ms(took);
+        let verdict = self.judge(what, t, budget_ms);
         println!("  {what:<44} {t:>9.1} ms   budget {budget_ms:>6.0} ms   {verdict}");
     }
 
     fn ratio(&mut self, what: &str, ours: Duration, base: Duration, base_name: &str, gate: f64) {
         let r = ms(ours) / ms(base);
-        let verdict = if r <= gate {
-            "ok"
-        } else {
-            self.failed.push(what.to_string());
-            "FAIL"
-        };
+        let verdict = self.judge(what, r, gate);
         println!("  {what:<44} {:>9.1} ms   {base_name} {:.1} ms: {r:.2}x   gate {gate}x   {verdict}", ms(ours), ms(base));
     }
 }
@@ -75,7 +105,7 @@ pub fn run(opts: &Opts) -> bool {
     let bench = root.join("bench");
     let out = root.join("target/bench");
     std::fs::create_dir_all(&out).unwrap();
-    let mut g = Gates { failed: Vec::new(), soft: Vec::new() };
+    let mut g = Gates { failed: Vec::new(), soft: Vec::new(), shared_runner: opts.shared_runner };
     let run_in = |dir: &Path, args: &[&str]| {
         let mut c = Command::new(&dat);
         c.args(args).current_dir(dir);
@@ -113,9 +143,9 @@ pub fn run(opts: &Opts) -> bool {
         let no_guard_exe = out.join("fib35_dat_no_guard");
         let built_ng = run_in(&bench, &["build", "fib35.dat", "-o"]).arg(&no_guard_exe).env("DAT_NO_STACK_GUARD", "1").status();
         if built.is_ok_and(|s| s.success()) && built_ng.is_ok_and(|s| s.success()) {
-            let h = time(&mut Command::new(&hand), RUNS).unwrap();
-            let d = time(&mut Command::new(&gen_exe), RUNS).unwrap();
-            let n = time(&mut Command::new(&no_guard_exe), RUNS).unwrap();
+            let (mut h, mut d, mut n) = (Command::new(&hand), Command::new(&gen_exe), Command::new(&no_guard_exe));
+            let t = time_interleaved(&mut [&mut h, &mut d, &mut n], 2 * RUNS).unwrap();
+            let (h, d, n) = (t[0], t[1], t[2]);
             g.ratio("generated fib(35) vs hand-written Rust", d, h, "hand-written", 1.2);
             g.ratio("stack guard: fib(35) with vs without", d, n, "without", 1.05);
         } else {
@@ -126,15 +156,18 @@ pub fn run(opts: &Opts) -> bool {
     println!("interpreter speed (criterion 16)");
     let py = Command::new("python3").arg("--version").output();
     if py.is_ok_and(|o| o.status.success()) {
-        let ours = time(&mut run_in(&bench, &["run", "fib30.dat"]), 10).unwrap();
-        let cpython = time(Command::new("python3").arg(bench.join("fib.py")).arg("30"), 10).unwrap();
+        let mut ours = run_in(&bench, &["run", "fib30.dat"]);
+        let mut cpython = Command::new("python3");
+        cpython.arg(bench.join("fib.py")).arg("30");
+        let t = time_interleaved(&mut [&mut ours, &mut cpython], 10).unwrap();
+        let (ours, cpython) = (t[0], t[1]);
         g.ratio("interpreted fib(30) vs CPython", ours, cpython, "CPython", 2.0);
     } else {
         println!("  python3 not found; skipping the CPython gate");
     }
 
     if !g.soft.is_empty() {
-        println!("perf: over budget but within 2x: {}", g.soft.join(", "));
+        println!("perf: over the limit but within 2x on a shared runner: {}", g.soft.join(", "));
     }
     if g.failed.is_empty() {
         println!("perf: all gates pass");

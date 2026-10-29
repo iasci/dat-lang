@@ -12,7 +12,7 @@
 //! - `concurrency`: two compiled runs of one file at once, with the file
 //!   changed in between, each run their own version.
 //! - `perf`: the latency budgets and speed gates. Not part of `all`, since
-//!   it needs a quiet machine.
+//!   it needs a quiet machine. `--shared-runner` relaxes it for CI.
 //!
 //! `--bless` rewrites goldens from the interpreter's results and the spec
 //! ratchet from the current pass list.
@@ -33,6 +33,8 @@ pub struct Opts {
     pub verbose: bool,
     /// Skip the compiled mode (faster local runs). CI never sets it.
     pub interp_only: bool,
+    /// `perf` on a shared CI runner: fail only at twice a budget or gate.
+    pub shared_runner: bool,
 }
 
 fn main() -> ExitCode {
@@ -47,6 +49,7 @@ fn main() -> ExitCode {
         bless: flag(&mut args, "--bless"),
         verbose: flag(&mut args, "--verbose"),
         interp_only: flag(&mut args, "--interp-only"),
+        shared_runner: flag(&mut args, "--shared-runner"),
     };
     let what = args.first().map(String::as_str).unwrap_or("all");
     let ok = match what {
@@ -66,7 +69,7 @@ fn main() -> ExitCode {
         }
         other => {
             eprintln!(
-                "usage: dat-conformance [examples|spec|self-test|structure|concurrency|perf|all] [--bless] [--verbose] [--interp-only]\nunknown: {other}"
+                "usage: dat-conformance [examples|spec|self-test|structure|concurrency|perf|all] [--bless] [--verbose] [--interp-only] [--shared-runner]\nunknown: {other}"
             );
             return ExitCode::from(2);
         }
