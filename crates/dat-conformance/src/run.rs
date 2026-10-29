@@ -1,7 +1,7 @@
 //! Running the `dat` binary and normalizing what it prints.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Output, Stdio};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Outcome {
@@ -21,15 +21,27 @@ pub fn dat_binary() -> PathBuf {
     p
 }
 
-/// Runs `dat <args>` in `dir`.
-pub fn dat(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Outcome {
+fn dat_command(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Command {
     let mut cmd = Command::new(dat_binary());
     cmd.args(args).current_dir(dir);
     cmd.env_remove("DAT_FAULT");
     for (k, v) in env {
         cmd.env(k, v);
     }
-    let out = cmd.output().expect("failed to run dat");
+    cmd
+}
+
+/// Runs `dat <args>` in `dir`.
+pub fn dat(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Outcome {
+    outcome(dat_command(dir, args, env).output().expect("failed to run dat"))
+}
+
+/// Starts `dat <args>` in `dir` without waiting; `outcome` reads the result.
+pub fn dat_start(dir: &Path, args: &[&str]) -> Child {
+    dat_command(dir, args, &[]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().expect("failed to run dat")
+}
+
+pub fn outcome(out: Output) -> Outcome {
     Outcome {
         status: out.status.code().unwrap_or(-1),
         stdout: normalize(&String::from_utf8_lossy(&out.stdout)),

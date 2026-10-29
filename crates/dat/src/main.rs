@@ -334,14 +334,21 @@ fn cmd_ir(args: &Args) -> i32 {
     }
 }
 
+/// Prints the crate `dat run --compiled` builds, or for a file with tests
+/// and no `main`, the one `dat test --compiled` builds.
 fn cmd_rust(args: &Args) -> i32 {
-    match compile_program_opts(args, Options::default()) {
-        Ok(p) => {
-            print!("{}", dat_codegen::emit_crate(&[&p], &dat_codegen::Entry::Run));
-            0
-        }
-        Err(code) => code,
-    }
+    let p = match compile_program_opts(args, Options::default()) {
+        Ok(p) => p,
+        Err(code) => return code,
+    };
+    let entry = match (p.main, p.tests.is_empty()) {
+        (Some(_), _) => dat_codegen::Entry::Run,
+        (None, false) => dat_codegen::Entry::Test,
+        // Neither: report the missing `main` as `dat run` does.
+        (None, true) => return compile_program_opts(args, Options { require_main: true }).err().unwrap_or(1),
+    };
+    print!("{}", dat_codegen::emit_crate(&[&p], &entry));
+    0
 }
 
 fn compile_program_opts(args: &Args, opts: Options) -> Result<dat_ir::Program, i32> {

@@ -24,6 +24,11 @@ test "clamp keeps values inside the range" {
 - Tests share no state, because dat has no global mutable state, so they run in parallel and in any order.
 - Tests aren't included in production builds.
 
+```
+test "adds" { assert(1 + 1 == 2); }
+test "adds" { assert(2 + 2 == 4); }   // ❌ E2050: a test named "adds" already exists in this module
+```
+
 ## Failure Output
 
 When an `assert` condition is a comparison, a failure shows both sides, so finding the cause rarely needs an extra `print`. Suppose `clamp` forgot the lower bound and returned `Math.min(value, high)`. The failure shows:

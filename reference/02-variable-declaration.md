@@ -125,6 +125,15 @@ const user: User = { name: "Ada", age: 36 };   // struct, same as User { ... }
 const ratio: float = 1;                        // float
 ```
 
+Any other value must already have the declared type. `void` isn't a value, so no variable can hold one:
+
+```
+const count = 3;
+const label: string = count;          // ❌ E0250: expected a string, found an int
+                                      //    fix: const label: string = `${count}`;
+const saved: void = print("saved");   // ❌ E0252: a variable can't hold void
+```
+
 Some declarations can't be inferred and are invalid:
 
 ```

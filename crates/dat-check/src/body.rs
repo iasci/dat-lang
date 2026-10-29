@@ -1025,6 +1025,7 @@ impl<'m, 'a> Body<'m, 'a> {
         operands.push(cur);
         operands.reverse();
         let checked: Vec<TE> = operands.iter().map(|&o| self.expr(o)).collect();
+        let tys: Vec<Ty> = checked.iter().map(|c| c.ty).collect();
         let whole = self.espan(id);
         let loc = self.loc(whole);
         let mut iter = checked.into_iter().enumerate();
@@ -1040,7 +1041,7 @@ impl<'m, 'a> Body<'m, 'a> {
                 }
                 (Ty::Str, Ty::Str) => concat(vec![acc.e, v.e]),
                 (Ty::Str, other) | (other, Ty::Str) if other.is_printable() => {
-                    self.string_plus(&operands, i, acc.ty, v.ty, whole);
+                    self.string_plus(&operands, &tys, i, acc.ty, v.ty, whole);
                     return poison();
                 }
                 (a, b) => {
@@ -1055,7 +1056,11 @@ impl<'m, 'a> Body<'m, 'a> {
 
     /// E0301, with a template string as the fix. The chain's first `at`
     /// operands have already been combined into one value of type `prefix`.
-    fn string_plus(&mut self, operands: &[ExprId], at: usize, prefix: Ty, next: Ty, whole: Span) {
+    ///
+    /// Two ints next to each other after a string, as in `"Total: " + count
+    /// + 1`, may mean TypeScript's "Total: 31" or the sum, so both are
+    /// options and `dat fix` applies neither.
+    fn string_plus(&mut self, operands: &[ExprId], tys: &[Ty], at: usize, prefix: Ty, next: Ty, whole: Span) {
         let ast = self.ast();
         let (bad, bad_ty) = if prefix == Ty::Str {
             (self.espan(operands[at]), next)
@@ -1063,7 +1068,6 @@ impl<'m, 'a> Body<'m, 'a> {
             (self.espan(operands[0]).to(self.espan(operands[at - 1])), prefix)
         };
         let (a, b) = if prefix == Ty::Str { ("string", bad_ty.name()) } else { (bad_ty.name(), "string") };
-        let mut template = String::from("`");
         let piece = |e: ExprId, out: &mut String| match &ast.expr(e).kind {
             ExprKind::Str(s) => out.push_str(&escape_template(s)),
             ExprKind::Template(_) => {
@@ -1076,21 +1080,46 @@ impl<'m, 'a> Body<'m, 'a> {
                 out.push('}');
             }
         };
-        if prefix == Ty::Str {
-            for &o in &operands[..at] {
-                piece(o, &mut template);
+        let first_str = tys.iter().position(|t| *t == Ty::Str).unwrap_or(at);
+        // The end of the run of ints that starts at `i`, after the first string.
+        let run_end = |i: usize| {
+            let mut j = i;
+            while i > first_str && j + 1 < tys.len() && tys[i] == Ty::Int && tys[j + 1] == Ty::Int {
+                j += 1;
             }
+            j
+        };
+        let template = |sum_runs: bool| {
+            let mut out = String::from("`");
+            let mut i = 0;
+            if prefix != Ty::Str {
+                out.push_str(&format!("${{{}}}", self.text(bad)));
+                i = at;
+            }
+            while i < operands.len() {
+                let j = if sum_runs { run_end(i) } else { i };
+                if j > i {
+                    out.push_str(&format!("${{{}}}", self.text(self.espan(operands[i]).to(self.espan(operands[j])))));
+                } else {
+                    piece(operands[i], &mut out);
+                }
+                i = j + 1;
+            }
+            out.push('`');
+            out
+        };
+        let ambiguous = (first_str + 1..tys.len()).any(|i| run_end(i) > i);
+        let d = self.err(codes::STRING_PLUS, whole, format!("can't add {a} and {b}")).with_label(format!(
+            "`{}` is {}",
+            self.text(bad),
+            bad_ty.a_name()
+        ));
+        let d = if ambiguous {
+            d.with_fix("join the values as text, as TypeScript does", Applicability::Option, vec![self.edit(whole, template(false))])
+                .with_fix("add the numbers first", Applicability::Option, vec![self.edit(whole, template(true))])
         } else {
-            template.push_str(&format!("${{{}}}", self.text(bad)));
-        }
-        for &o in &operands[at..] {
-            piece(o, &mut template);
-        }
-        template.push('`');
-        let d = self
-            .err(codes::STRING_PLUS, whole, format!("can't add {a} and {b}"))
-            .with_label(format!("`{}` is {}", self.text(bad), bad_ty.a_name()))
-            .with_fix("use a template string", Applicability::Safe, vec![self.edit(whole, template)]);
+            d.with_fix("use a template string", Applicability::Safe, vec![self.edit(whole, template(false))])
+        };
         self.push(d);
     }
 

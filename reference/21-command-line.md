@@ -59,6 +59,20 @@ fix: compare with null
 - Each root cause is reported once.
 - A fix is marked the same way as in the spec's ❌ lines: `fix:` for a safe fix, `fix (review):` for one that changes what the code means, and `option:` when the right fix depends on intent. See [Reading the Examples](./README.md#reading-the-examples).
 
+### General Codes
+
+A code's first two digits name the section that defines its rule. Two codes belong to no section:
+
+- **`E0001`** is a syntax error. Where the fix is certain, such as a missing `;` or TypeScript's `===`, the error comes with it:
+
+  ```
+  const answer = 42;
+  if (answer === 42) { }   // ❌ E0001: dat has no `===`; `==` compares contents
+                           //    fix: if (answer == 42) { }
+  ```
+
+- **`E0002`** marks valid dat that this compiler doesn't support yet. It never means the program is wrong, and it disappears once the compiler implements the feature.
+
 With `--json`, diagnostics go to stderr as one JSON document:
 
 ```

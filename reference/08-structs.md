@@ -20,6 +20,9 @@ A struct literal names the struct and sets its fields. Every field without a def
 ```
 const ada = User { name: "Ada" };                 // email: null, active: true, tags: []
 const lin = User { name: "Lin", email: "lin@example.com", active: false };
+const mo = User { email: "mo@example.com" };                   // ❌ E0850: User needs a `name`
+                                                               //    fix (review): const mo = User { email: "mo@example.com", name: _ };
+const kai = User { name: "Kai", emial: "kai@example.com" };    // ❌ E0851: User has no field `emial`
 ```
 
 When the type is already known from context, the struct name can be left out:

@@ -22,8 +22,10 @@ error[E0301]: can't add string and int
   --> types.dat:13:17
 13 |   const total = "Total: " + count + 1;
    |                 ^^^^^^^^^^^^^^^^^^^^^ `count` is an int
-fix: use a template string
+option: join the values as text, as TypeScript does
 13 |   const total = `Total: ${count}${1}`;
+option: add the numbers first
+13 |   const total = `Total: ${count + 1}`;
 
 error[E0250]: expected an int, found a string
   --> types.dat:14:14
@@ -46,7 +48,7 @@ error[E0701]: condition must be bool
    |          ^^^^^ `label` is a string
 fix: compare with the empty string
 17 |   while (label != "") {
-7 errors, 4 fixable with dat fix
+7 errors, 3 fixable with dat fix
 
 === run
 status: 2
@@ -69,8 +71,10 @@ error[E0301]: can't add string and int
   --> types.dat:13:17
 13 |   const total = "Total: " + count + 1;
    |                 ^^^^^^^^^^^^^^^^^^^^^ `count` is an int
-fix: use a template string
+option: join the values as text, as TypeScript does
 13 |   const total = `Total: ${count}${1}`;
+option: add the numbers first
+13 |   const total = `Total: ${count + 1}`;
 
 error[E0250]: expected an int, found a string
   --> types.dat:14:14
@@ -93,4 +97,4 @@ error[E0701]: condition must be bool
    |          ^^^^^ `label` is a string
 fix: compare with the empty string
 17 |   while (label != "") {
-7 errors, 4 fixable with dat fix
+7 errors, 3 fixable with dat fix

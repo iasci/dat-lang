@@ -1,0 +1,10 @@
+// `dat rust` on a file with tests and no `main` prints the crate that
+// `dat test --compiled` builds.
+
+function double(n: int): int {
+  return n * 2;
+}
+
+test "doubles" {
+  assert(double(2) == 4);
+}

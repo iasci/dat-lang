@@ -17,7 +17,7 @@
 //! check clean and give the `run (fixed)` section in both modes.
 
 use crate::Opts;
-use crate::run::{Outcome, dat, diff};
+use crate::run::{Outcome, dat, dat_start, diff, outcome};
 use dat_diag::Json;
 use std::path::{Path, PathBuf};
 
@@ -405,6 +405,69 @@ pub fn self_test(opts: &Opts) -> bool {
         println!("self-test: FAIL, the injected fault went unnoticed (mode diff: {caught_by_diff}, golden: {caught_by_golden})");
         false
     }
+}
+
+/// Two `--compiled` runs of one file share its generated crate. The file
+/// changes while the first run is still building, and each run must print
+/// its own version.
+pub fn concurrent_runs(opts: &Opts) -> bool {
+    if opts.interp_only {
+        println!("concurrency: skipped with --interp-only");
+        return true;
+    }
+    let dir = opts.root.join("target/conformance-tmp/concurrency");
+    std::fs::create_dir_all(&dir).unwrap();
+    // A new token each time, so every version's crate is new.
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    let token = format!("run {nanos:x}");
+    let program = |v: &str| format!("function main(): void {{\n  print(\"{token} {v}\");\n}}\n");
+    let file = dir.join("race.dat");
+    let fail = |what: String| {
+        println!("concurrency: FAIL, {what}");
+        false
+    };
+    // A first run finds the crate the race is about.
+    std::fs::write(&file, program("zero")).unwrap();
+    let warm = dat(&dir, &["run", "--compiled", "race.dat"], &[]);
+    if warm.status != 0 {
+        return fail(format!("a single run gave {warm:?}"));
+    }
+    let crates = std::env::var_os("DAT_CACHE_DIR").map_or_else(|| opts.root.join("target/dat-cache"), PathBuf::from).join("crates");
+    let Some(main_rs) = crate_with(&crates, &format!("{token} zero")) else {
+        return fail(format!("no generated crate in {} holds the program", crates.display()));
+    };
+    std::fs::write(&file, program("one")).unwrap();
+    let mut first = dat_start(&dir, &["run", "--compiled", "race.dat"]);
+    // Change the file as soon as the first run has written its crate, while
+    // it builds: the race is between this and rustc reading `main.rs`.
+    let marker = format!("{token} one");
+    let started = std::time::Instant::now();
+    while !std::fs::read_to_string(&main_rs).is_ok_and(|s| s.contains(&marker))
+        && first.try_wait().is_ok_and(|s| s.is_none())
+        && started.elapsed() < std::time::Duration::from_secs(60)
+    {
+        std::thread::sleep(std::time::Duration::from_micros(100));
+    }
+    std::fs::write(&file, program("two")).unwrap();
+    let second = dat_start(&dir, &["run", "--compiled", "race.dat"]);
+    let mut ok = true;
+    for (child, v) in [(first, "one"), (second, "two")] {
+        let got = outcome(child.wait_with_output().unwrap());
+        let want = Outcome { status: 0, stdout: format!("{token} {v}\n"), stderr: String::new() };
+        if got != want {
+            ok = fail(format!("the run of version {v} gave {got:?}"));
+        }
+    }
+    if ok {
+        println!("concurrency: ok, two compiled runs of one changing file each ran their own version");
+    }
+    ok
+}
+
+/// The generated `main.rs` that contains `text`.
+fn crate_with(crates: &Path, text: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(crates).ok()?;
+    entries.flatten().map(|e| e.path().join("src/main.rs")).find(|p| std::fs::read_to_string(p).is_ok_and(|s| s.contains(text)))
 }
 
 #[cfg(test)]

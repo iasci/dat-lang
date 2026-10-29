@@ -21,7 +21,7 @@ Code examples are fragments of a function body, unless they declare top-level it
                    //    fix: `Total: ${42}`
 ```
 
-- **The code** names the rule that was broken and never changes. Its first two digits are the section that defines the rule, so `E0301` is in [Operators](./03-operators.md). The same mistake has the same code wherever it appears.
+- **The code** names the rule that was broken and never changes. Its first two digits are the section that defines the rule, so `E0301` is in [Operators](./03-operators.md). Codes that start with `E00` are [general](./21-command-line.md#general-codes). The same mistake has the same code wherever it appears.
 - **`fix:`** shows the code as it reads after the fix. `dat fix` applies it.
 - **`fix (review):`** is a fix that changes what the code means, such as turning a `const` into a `let`. The compiler shows it, but `dat fix` leaves it to you.
 - **`option:`** lines appear when the right fix depends on what the author meant. `dat fix` applies none of them. When two fixes mean the same thing, the compiler gives only one.

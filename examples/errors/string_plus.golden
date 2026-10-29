@@ -1,0 +1,88 @@
+# Golden results for string_plus.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0301]: can't add string and int
+ --> string_plus.dat:8:23
+8 |   const alternating = "fib(" + count + ") = " + 55;
+  |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `count` is an int
+fix: use a template string
+8 |   const alternating = `fib(${count}) = ${55}`;
+
+error[E0301]: can't add int and string
+ --> string_plus.dat:9:20
+9 |   const sumFirst = count + 1 + " items";
+  |                    ^^^^^^^^^^^^^^^^^^^^ `count + 1` is an int
+fix: use a template string
+9 |   const sumFirst = `${count + 1} items`;
+
+error[E0301]: can't add string and int
+  --> string_plus.dat:10:21
+10 |   const ambiguous = "Total: " + count + 1;
+   |                     ^^^^^^^^^^^^^^^^^^^^^ `count` is an int
+option: join the values as text, as TypeScript does
+10 |   const ambiguous = `Total: ${count}${1}`;
+option: add the numbers first
+10 |   const ambiguous = `Total: ${count + 1}`;
+
+error[E0301]: can't add int and string
+  --> string_plus.dat:11:19
+11 |   const twoRuns = count + 1 + " items, " + count + count + " more" + count;
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `count + 1` is an int
+option: join the values as text, as TypeScript does
+11 |   const twoRuns = `${count + 1} items, ${count}${count} more${count}`;
+option: add the numbers first
+11 |   const twoRuns = `${count + 1} items, ${count + count} more${count}`;
+
+error[E0301]: can't add string and bool
+  --> string_plus.dat:12:22
+12 |   const notNumbers = "x" + flag + 1;
+   |                      ^^^^^^^^^^^^^^ `flag` is a bool
+fix: use a template string
+12 |   const notNumbers = `x${flag}${1}`;
+5 errors, 3 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0301]: can't add string and int
+ --> string_plus.dat:8:23
+8 |   const alternating = "fib(" + count + ") = " + 55;
+  |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `count` is an int
+fix: use a template string
+8 |   const alternating = `fib(${count}) = ${55}`;
+
+error[E0301]: can't add int and string
+ --> string_plus.dat:9:20
+9 |   const sumFirst = count + 1 + " items";
+  |                    ^^^^^^^^^^^^^^^^^^^^ `count + 1` is an int
+fix: use a template string
+9 |   const sumFirst = `${count + 1} items`;
+
+error[E0301]: can't add string and int
+  --> string_plus.dat:10:21
+10 |   const ambiguous = "Total: " + count + 1;
+   |                     ^^^^^^^^^^^^^^^^^^^^^ `count` is an int
+option: join the values as text, as TypeScript does
+10 |   const ambiguous = `Total: ${count}${1}`;
+option: add the numbers first
+10 |   const ambiguous = `Total: ${count + 1}`;
+
+error[E0301]: can't add int and string
+  --> string_plus.dat:11:19
+11 |   const twoRuns = count + 1 + " items, " + count + count + " more" + count;
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `count + 1` is an int
+option: join the values as text, as TypeScript does
+11 |   const twoRuns = `${count + 1} items, ${count}${count} more${count}`;
+option: add the numbers first
+11 |   const twoRuns = `${count + 1} items, ${count + count} more${count}`;
+
+error[E0301]: can't add string and bool
+  --> string_plus.dat:12:22
+12 |   const notNumbers = "x" + flag + 1;
+   |                      ^^^^^^^^^^^^^^ `flag` is a bool
+fix: use a template string
+12 |   const notNumbers = `x${flag}${1}`;
+5 errors, 3 fixable with dat fix

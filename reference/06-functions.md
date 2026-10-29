@@ -18,13 +18,31 @@ Named functions can't be declared inside other functions. For a local function, 
 
 ## Return Types
 
-A function that returns nothing has return type `void`, and can use `return;` to exit early.
+A function that returns nothing has return type `void`, and can use `return;` to exit early. Every `return` must match the return type:
+
+```
+function log(message: string): void {
+  print(message);
+  return message;   // ❌ E0652: `log` returns void, so `return` can't have a value
+                    //    fix (review): return;
+}
+
+function clampToZero(x: int): int {
+  if (x < 0) {
+    return;         // ❌ E0653: `clampToZero` returns an int, so `return` needs a value
+                    //    fix (review): return _;
+  }
+  return x;
+}
+```
 
 The return type can be left out and inferred from the body, with two exceptions: exported functions, and methods of exported structs, must declare it. This keeps a module's interface readable without its bodies, and lets the compiler check each module independently.
 
 ```
 function double(x: int) { return x * 2; }          // inferred: int
 export function triple(x: int): int { return x * 3; }
+export function quadruple(x: int) { return x * 4; }   // ❌ E0655: exported function `quadruple` must declare its return type
+                                                      //    fix: export function quadruple(x: int): int { return x * 4; }
 ```
 
 Every path through a function that returns a value must end in `return`, `throw`, or a call to a `never` function such as `fail()`. Nothing returns `null` implicitly:
@@ -39,6 +57,15 @@ function sign(x: int): string {
   }
 }   // ❌ E0601: missing return when x == 0
     //    fix (review, end of sign): return _;
+```
+
+A function that returns `never` must end every path with `throw` or a call to another `never` function, and can't `return`:
+
+```
+function abort(reason: string): never {
+  print(`fatal: ${reason}`);
+}   // ❌ E0654: `abort` returns never, but it can reach its end
+    //    fix (review, end of abort): fail(_);
 ```
 
 A function that can fail declares the failure with `throws`. See [Errors](./12-errors.md).
@@ -59,6 +86,17 @@ function connect(host: string, port: int = 5432, label: string?): void {
 connect("localhost");                   // port = 5432, label = null
 connect("localhost", 6543);             // label = null
 connect("localhost", 6543, "primary");
+```
+
+A call needs an argument for each parameter that has no default, and can't pass more arguments than there are parameters:
+
+```
+function area(width: int, height: int): int {
+  return width * height;
+}
+
+const a = area(3);         // ❌ E0650: `area` takes 2 arguments, but 1 was given
+const b = area(3, 4, 5);   // ❌ E0650: `area` takes 2 arguments, but 3 were given
 ```
 
 Parameters are constants: the function can't reassign or modify them. To work with a changed version, copy it into a `let`:
@@ -173,6 +211,19 @@ A program starts at the `main` function in the entry file. Statements aren't all
 function main(): void {
   print("Hello, World!");
 }
+```
+
+`main` takes no parameters and returns `void`:
+
+```
+function main(name: string): void { print(name); }   // ❌ E0661: `main` takes no parameters
+```
+
+`dat run` and `dat build` report a file without `main`. `dat check` and `dat test` don't need one, so a module of functions and tests has none.
+
+```
+function greet(): void { print("Hello"); }   // ❌ E0660: this program has no `main` function
+                                             //    fix (review, end of file): function main(): void { }
 ```
 
 `main` may declare `throws`. If an error escapes it, declared or runtime, the program prints the error and exits with status 1. See [Errors](./12-errors.md).

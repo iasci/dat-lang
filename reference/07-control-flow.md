@@ -153,4 +153,12 @@ while (attempts < 3 && !connected()) {
 }
 ```
 
-`break` and `continue` work in every kind of loop.
+`break` and `continue` work in every kind of loop. Outside a loop they're errors:
+
+```
+function stopEarly(n: int): void {
+  if (n > 3) {
+    break;   // ❌ E0750: `break` outside a loop
+  }
+}
+```

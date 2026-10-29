@@ -80,6 +80,19 @@ try {
 - A `catch` clause can rethrow the error with `throw e;`.
 - Changes made in the block before the error stay: a `let` variable or a `mut` parameter changed before the failure keeps the change.
 
+A clause must name an error type, and a clause that catches every error comes last:
+
+```
+function check(port: int): void {
+  if (port < 1) {
+    throw RangeError { message: `port out of range: ${port}` };
+  }
+}
+
+try { check(0); } catch (e: string) { }                            // ❌ E1251: `string` isn't an error type
+try { check(0); } catch (e: Error) { } catch (e: RangeError) { }   // ❌ E1252: a clause that catches every error must be the last one
+```
+
 Catching runtime errors keeps one failure from taking down everything else, as in this request handler:
 
 ```
@@ -159,6 +172,12 @@ function percent(value: int): int {
 ```
 
 Use a runtime error when a caller broke a rule it should have known, such as passing an argument out of range. Use a declared error when the caller is expected to handle the failure. Runtime error types can't appear after `throws`.
+
+Only errors can be thrown, not strings or other values:
+
+```
+throw "percent out of range";   // ❌ E1250: only errors can be thrown, and this is a string
+```
 
 ## The `Error` Type
 

@@ -15,3 +15,15 @@ fix (review): add a `main` function at the end
 7 | function main(): void {
 8 | }
 1 error
+
+=== rust
+status: 1
+--- stderr
+error[E0660]: this program has no `main` function
+ --> no_main.dat:1:1
+1 | // `dat check` accepts a file without `main`; `dat run` needs one.
+  | ^ `dat run` and `dat build` start at `main`
+fix (review): add a `main` function at the end
+7 | function main(): void {
+8 | }
+1 error

@@ -30,6 +30,12 @@ Edge cases:
 - Float division by zero follows IEEE 754 and produces `Infinity`, `-Infinity` or `NaN`, so `1 / 0` is `Infinity`.
 - `%` keeps the sign of the left operand: `-7 % 3` is `-1`.
 
+Arithmetic needs numbers on both sides:
+
+```
+"10" - 4     // ❌ E0350: can't apply `-` to a string and an int
+```
+
 ## String Concatenation
 
 `+` joins two strings. Any other value must be converted first, with a template string or `toString()`.

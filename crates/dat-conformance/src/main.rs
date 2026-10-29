@@ -9,6 +9,8 @@
 //!   interpreter (`DAT_FAULT=interp-plus-one`) and expecting a difference.
 //! - `structure`: neither backend depends on the parser or checker, and
 //!   generated Rust forbids `unsafe` and uses no `RefCell` or reflection.
+//! - `concurrency`: two compiled runs of one file at once, with the file
+//!   changed in between, each run their own version.
 //! - `perf`: the latency budgets and speed gates. Not part of `all`, since
 //!   it needs a quiet machine.
 //!
@@ -52,17 +54,19 @@ fn main() -> ExitCode {
         "spec" => spec::run(&opts),
         "self-test" => examples::self_test(&opts),
         "structure" => examples::structure(&opts),
+        "concurrency" => examples::concurrent_runs(&opts),
         "perf" => perf::run(&opts),
         "all" => {
             let a = examples::run(&opts);
             let b = examples::self_test(&opts);
             let c = spec::run(&opts);
             let d = examples::structure(&opts);
-            a && b && c && d
+            let e = examples::concurrent_runs(&opts);
+            a && b && c && d && e
         }
         other => {
             eprintln!(
-                "usage: dat-conformance [examples|spec|self-test|structure|perf|all] [--bless] [--verbose] [--interp-only]\nunknown: {other}"
+                "usage: dat-conformance [examples|spec|self-test|structure|concurrency|perf|all] [--bless] [--verbose] [--interp-only]\nunknown: {other}"
             );
             return ExitCode::from(2);
         }

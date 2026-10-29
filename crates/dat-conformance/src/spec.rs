@@ -384,9 +384,10 @@ struct Case {
     status: Status,
 }
 
-fn compile(text: &str) -> (SourceMap, Vec<Diagnostic>, bool) {
+/// `require_main` checks the program as `dat run` does.
+fn compile(text: &str, require_main: bool) -> (SourceMap, Vec<Diagnostic>, bool) {
     let mut sources = SourceMap::new();
-    let c = dat_check::compile(&mut sources, "case.dat", text.to_string(), dat_check::Options::default());
+    let c = dat_check::compile(&mut sources, "case.dat", text.to_string(), dat_check::Options { require_main });
     let has_main = c.program.as_ref().is_some_and(|p| p.main.is_some());
     (sources, c.diags, has_main)
 }
@@ -396,8 +397,8 @@ fn compile(text: &str) -> (SourceMap, Vec<Diagnostic>, bool) {
 fn never_panics(text: &str) -> Result<(), String> {
     let text = text.to_string();
     std::panic::catch_unwind(move || {
-        compile(&text);
-        compile(&format!("function main(): void {{\n{text}\n}}\n"));
+        compile(&text, false);
+        compile(&format!("function main(): void {{\n{text}\n}}\n"), false);
     })
     .map_err(|e| e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default())
 }
@@ -446,8 +447,11 @@ fn run_case(opts: &Opts, id: &str, src: &CaseSource) -> Status {
 }
 
 /// A ❌ case: exactly the expected diagnostic, on its line, with the spec's fixes.
+/// Only `dat run` and `dat build` report a missing `main`, so its case is
+/// checked as they check it.
 fn check_error_case(block: &Block, e: &Expected, src: &CaseSource) -> Status {
-    let (sources, diags, _) = compile(&src.text);
+    let require_main = e.code == "E0660";
+    let (sources, diags, _) = compile(&src.text, require_main);
     let blocking: Vec<Diagnostic> =
         diags.iter().filter(|d| d.code == "E0002" || (d.code == "E1401" && e.code != "E1401")).cloned().collect();
     if let Some(r) = unsupported_reason(&blocking) {
@@ -498,7 +502,7 @@ fn check_error_case(block: &Block, e: &Expected, src: &CaseSource) -> Status {
         if ours.applicability == Applicability::Safe {
             let edits: Vec<&dat_diag::Edit> = ours.edits.iter().collect();
             if let Some(fixed) = dat_diag::apply_edits(&file.text, &edits) {
-                let (_, after, _) = compile(&fixed);
+                let (_, after, _) = compile(&fixed, require_main);
                 if !after.is_empty() {
                     return Status::Fail(format!("after the safe fix: {}", after.iter().map(|d| d.code).collect::<Vec<_>>().join(", ")));
                 }
@@ -527,7 +531,7 @@ fn block_cases(opts: &Opts, block: &Block, prelude: &[String]) -> Vec<Case> {
         }
     }
     let src = build_case(&block.lines, &drop, true, prelude);
-    let (_, diags, has_main) = compile(&src.text);
+    let (_, diags, has_main) = compile(&src.text, false);
     let status = if exps.iter().any(|e| e.structural) {
         Status::DocOnly("its ❌ line is structure, so only the ❌ case runs".into())
     } else if let Some(r) = unsupported_reason(&diags) {

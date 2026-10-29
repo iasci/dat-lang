@@ -4,6 +4,9 @@
 //! mode, so an unchanged program is a Cargo no-op and an edited one rebuilds
 //! incrementally. All crates share one target directory, so dat-rt is
 //! compiled once. The toolchain is pinned to the one dat itself uses.
+//!
+//! Two runs of one file share its crate, so each holds the crate's lock
+//! from writing its source until its program has started.
 
 use crate::{Entry, emit_crate};
 use dat_ir::Program;
@@ -74,6 +77,10 @@ fn write_if_changed(path: &Path, contents: &str) -> Result<(), String> {
 struct Crate {
     dir: PathBuf,
     name: String,
+    /// Released when dropped. Otherwise a second run could rewrite
+    /// `main.rs` while the first builds it, or replace the executable
+    /// before the first starts it.
+    _lock: std::fs::File,
 }
 
 fn prepare(programs: &[&Program], entry: &Entry, kind: &str) -> Result<Crate, String> {
@@ -83,6 +90,10 @@ fn prepare(programs: &[&Program], entry: &Entry, kind: &str) -> Result<Crate, St
     key.extend(programs.iter().map(|p| p.file.as_str()));
     let name = format!("dat_{:016x}", hash(&key));
     let dir = cache_dir().join("crates").join(&name);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
+    let lock_path = dir.join(".lock");
+    let lock = std::fs::File::create(&lock_path).map_err(|e| format!("can't create {}: {e}", lock_path.display()))?;
+    lock.lock().map_err(|e| format!("can't lock {}: {e}", lock_path.display()))?;
     let manifest = format!(
         "[package]\nname = \"{name}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n\
          [dependencies]\ndat-rt = {{ path = {:?} }}\n\n\
@@ -94,7 +105,7 @@ fn prepare(programs: &[&Program], entry: &Entry, kind: &str) -> Result<Crate, St
     write_if_changed(&dir.join("Cargo.toml"), &manifest)?;
     write_if_changed(&dir.join("rust-toolchain.toml"), &format!("[toolchain]\nchannel = \"{TOOLCHAIN}\"\n"))?;
     write_if_changed(&dir.join("src/main.rs"), &emit_crate(programs, entry))?;
-    Ok(Crate { dir, name })
+    Ok(Crate { dir, name, _lock: lock })
 }
 
 fn cargo_build(c: &Crate, profile: &str) -> Result<PathBuf, String> {
@@ -150,7 +161,10 @@ pub fn run_compiled(programs: &[&Program], mode: Mode) -> Result<i32, String> {
             cmd.arg("--verbose");
         }
     }
-    let status = cmd.status().map_err(|e| format!("can't run {}: {e}", exe.display()))?;
+    let mut child = cmd.spawn().map_err(|e| format!("can't run {}: {e}", exe.display()))?;
+    // The program has started from this build, so another run may rebuild.
+    drop(c);
+    let status = child.wait().map_err(|e| format!("can't run {}: {e}", exe.display()))?;
     Ok(exit_code(status))
 }
 
