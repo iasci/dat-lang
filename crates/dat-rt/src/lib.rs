@@ -9,7 +9,8 @@
 //! `try_*` form, which returns `Result`. Generated code uses the plain form,
 //! which throws by unwinding (see [`throw`]); it is free until something fails.
 
-#![forbid(unsafe_code)]
+// One function opts out: reading the stack pointer (`stack.rs`).
+#![deny(unsafe_code)]
 
 mod error;
 mod fmt;

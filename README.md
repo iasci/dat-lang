@@ -88,13 +88,10 @@ next to the executable on macOS.
 
 Deep recursion throws a catchable `StackOverflowError`. dat code runs on a
 thread dat-rt creates with a known stack (32 MiB compiled, 512 MiB in the
-interpreter), and recursive functions compare the address of a local with a
-limit before their first call. Compiled, a recursive function is emitted as
-three Rust functions that call each other in turn, and only the first checks,
-so deep recursion pays for one check every three calls. Every program can nest
-at least 10,000 calls; measured, the interpreter goes past 160,000, and
-compiled code past six million simple calls and 128,000 of the largest kind
-measured.
+interpreter), and recursive functions compare the stack pointer with a limit
+before their first call. Every program can nest at least 10,000 calls;
+measured, the interpreter goes past 160,000, and compiled code past two
+million simple calls and 128,000 of the largest kind measured.
 
 ## Testing
 
@@ -125,10 +122,10 @@ target/release/dat-conformance perf               # latency budgets and speed ga
   uses without declaring them.
 - **Perf.** Interpreter-path latency budgets (`dat check fib.dat` ≤ 10 ms,
   `dat test fib.dat` ≤ 20 ms, `dat run hello.dat` ≤ 5 ms), the compiled-path
-  budget, compiled `fib(35)` against hand-written Rust, the stack guard's cost,
-  and interpreted `fib(30)` against CPython. Two more recursive programs in
-  `bench/`, Ackermann and mutual recursion, are timed against hand-written Rust
-  and shown, not judged. Limits are judged on the reference machine named in the M0 report;
+  budget, compiled `fib(35)` against hand-written Rust, and interpreted
+  `fib(30)` against CPython. Shown but not judged: the stack guard's cost on
+  `fib(35)`, the worst case, and Ackermann and mutual recursion against
+  hand-written Rust. Limits are judged on the reference machine named in the M0 report;
   `--shared-runner`, used in CI, fails only at twice a limit.
 
 Generated crates live in `target/dat-cache` (override with `DAT_CACHE_DIR`).

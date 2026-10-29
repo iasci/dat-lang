@@ -1,7 +1,7 @@
 //! The stack guard that makes deep recursion a catchable `StackOverflowError`.
 //!
 //! dat code runs on threads dat-rt creates, with a known stack size.
-//! Recursive functions compare the address of a local with a limit on entry.
+//! Recursive functions compare the stack pointer with a limit on entry.
 //! The red zone left below the limit covers the callee's own frame and the
 //! dat-rt and std calls made between two checks.
 
@@ -39,10 +39,28 @@ pub(crate) fn set_compiled_limit(limit: &'static StackLimit) {
     let _ = COMPILED.set(limit);
 }
 
+/// The stack pointer, read from its register. The address of a local would
+/// do, but it costs every checked function a stack slot.
 #[inline(always)]
+#[allow(unsafe_code)]
 fn stack_pointer() -> usize {
-    let marker = 0u8;
-    &marker as *const u8 as usize
+    let sp: usize;
+    // SAFETY: copies the stack pointer into a register; reads and writes no
+    // memory, leaves the stack and the flags alone.
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        std::arch::asm!("mov {}, rsp", out(reg) sp, options(pure, nomem, nostack, preserves_flags))
+    };
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        std::arch::asm!("mov {}, sp", out(reg) sp, options(pure, nomem, nostack, preserves_flags))
+    };
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        let marker = 0u8;
+        sp = &marker as *const u8 as usize;
+    }
+    sp
 }
 
 /// Called on entry to every recursive function in generated code, with the

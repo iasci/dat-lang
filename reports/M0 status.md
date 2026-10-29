@@ -1,6 +1,6 @@
 # M0 status: fibonacci, end to end
 
-**M0 is built, and exit criteria 1–16 pass on the reference machine. Criterion 17, CI, needs a run of the latest commits.** Compiled `fib(35)` runs at 0.60× hand-written Rust, down from 1.40× in the first build. Two changes did it: traces are read from the native stack when an error is thrown, instead of bookkeeping on every call, and each recursive function is emitted as three copies, so only one call in three checks the stack. Compiled code still trails hand-written Rust where Rust turns a call at the end of a function into a loop: Ackermann runs at 2.4×, because dat keeps every call for its traces (Q52). Everything in the [roadmap's M0](https://claude.ai/artifact/JNuKMm6CfFmLtBKFjjF4hG) exists as real code, which later milestones extend. That covers both run modes, the shared runtime, the diagnostic record, the five companion programs and the conformance runner over all 179 spec blocks. The work is about 9,700 lines of Rust. Its one outside dependency is `backtrace`, under the rule in `AGENTS.md`.
+**M0 is built, and exit criteria 1–16 pass on the reference machine. Criterion 17, CI, needs a run of the latest commits.** Compiled `fib(35)` runs at 1.08–1.12× hand-written Rust, down from 1.40× in the first build, because traces are now read from the native stack when an error is thrown instead of kept up on every call. `fib` is the worst case for the stack check that makes overflow catchable: it does nothing per call but call itself, so the check's cost shows at full size. Recursion that does work per call pays less: mutual recursion runs at 1.00–1.02×. Ackermann runs at about 2×, because Rust turns its calls at the end of a function into a loop and dat keeps every call for its traces (Q52). Everything in the [roadmap's M0](https://claude.ai/artifact/JNuKMm6CfFmLtBKFjjF4hG) exists as real code, which later milestones extend. That covers both run modes, the shared runtime, the diagnostic record, the five companion programs and the conformance runner over all 179 spec blocks. The work is about 9,700 lines of Rust. Its one outside dependency is `backtrace`, under the rule in `AGENTS.md`.
 
 Measurements come from the reference machine, an 8-vCPU Intel Xeon at 2.2 GHz (a shared GCP VM) running Linux 7.0 with rustc 1.99.0, and the gates are judged there at their limits. CI runs the same checks on GitHub's `ubuntu-latest`, where a result fails only at twice its limit, because shared runners are noisier. Times are wall time including process start, the median of 20 runs after 3 warmups (40 for `fib(35)`). Programs that are compared run interleaved, one run of each in turn.
 
@@ -16,15 +16,15 @@ Measurements come from the reference machine, an 8-vCPU Intel Xeon at 2.2 GHz (a
 | 6 | Codegen | **pass** | Generated crates carry `#![forbid(unsafe_code)]` and `#![deny(warnings)]`, so a warning fails the build. A short allow-list covers lints that flag valid dat, such as `unconditional_recursion` for a function meant to overflow. `structure` checks the generated Rust for `unsafe`, `RefCell`, `Any` and macro calls. All goldens match compiled. |
 | 7 | Runtime | **pass** | The overflow check, every error message, `print`, `toString`, `assert` rendering, the uncaught-error printer, the test reporter and the stack guard exist once, in `dat-rt`. The overflow messages are byte-identical in both modes (`examples/semantics/int_errors.golden`). |
 | 8 | Error model | **pass** | Overflow and the user-thrown `RangeError` are caught in both modes. `overflow_uncaught.dat` exits 1 with the report's exact trace in both modes, `at fibIter (overflow_uncaught.dat:9:18)` then `at main (overflow_uncaught.dat:17:9)`. A `dat build` executable moved to another folder prints the same trace (a CI step). |
-| 9 | Stack guard | **pass** | `deep.dat` catches `depth(100_000_000)` in both modes. Compiled `fib(35)` takes 35.5 ms with the guard and 42.5 ms without it (0.84×, gate ≤ 1.05×): with the check in place, LLVM arranges the code better. On Ackermann, whose functions are tiny, the guard costs about 22%. The interpreter overflows between 160,000 and 320,000 nested calls. Compiled code overflows between 6 and 8 million simple calls, and between 128,000 and 192,000 of the largest kind measured (a function with a `try` and strings). The spec guarantees 10,000. |
+| 9 | Stack guard | **pass**, limit changed by the owner | `deep.dat` catches `depth(100_000_000)` in both modes. The check costs 7–12% on compiled `fib(35)`, the worst case, and about 2% on mutual recursion. The roadmap's limit of 5% was set on `fib`. The owner has since asked to judge speed by everyday code rather than exceptional cases (Q53), so `perf` shows the `fib` number without judging it. The interpreter overflows between 160,000 and 320,000 nested calls. Compiled code overflows between 2 and 3 million simple calls, and between 128,000 and 192,000 of the largest kind measured (a function with a `try` and strings). The spec guarantees 10,000. |
 | 10 | `dat test` | **pass** | `0 failed, 4 passed` in both modes. `fib_fail.dat` prints the spec's `FAIL` block and exits 1 in both. |
 | 11 | Differential harness | **pass** | `dat-conformance self-test`: with `DAT_FAULT=interp-plus-one`, the run differs from both the compiled run and the golden, and the harness reports it. |
 | 12 | Spec extraction | **pass** | 179 of 179 blocks classified into 234 cases: 55 pass in both modes, 156 unsupported (with the reason), 23 doc-only, 0 fail. `conformance/spec-pass.txt` is the ratchet. |
-| 13 | Interpreter-path latency | **pass** | `dat check fib.dat` 2.1 ms (budget 10), `dat test fib.dat` 2.6 ms (20), `dat run hello.dat` 2.2 ms (5). |
-| 14 | Compiled-path budget | **pass** | Warm `dat run --compiled fib.dat` 48 ms (budget 1 s), warm `dat test --compiled fib.dat` 51 ms (2 s). The first compiled build on a machine takes about 10 s, up from about 1.2 s, because it builds `backtrace` and its dependencies once. |
-| 15 | Compiled speed | **pass** | `fib(35)`: 35.5 ms against 59.3 ms hand-written with `overflow-checks=on`, so 0.60× against the 1.2× gate. It was 1.40× with the first trace design and 1.19× before the copies. Two more programs are shown but not judged: Ackermann at 2.39× and mutual recursion at 0.71×. |
+| 13 | Interpreter-path latency | **pass** | `dat check fib.dat` 2.0 ms (budget 10), `dat test fib.dat` 2.5 ms (20), `dat run hello.dat` 2.1 ms (5). |
+| 14 | Compiled-path budget | **pass** | Warm `dat run --compiled fib.dat` 46 ms (budget 1 s), warm `dat test --compiled fib.dat` 46 ms (2 s). The first compiled build on a machine takes about 10 s, up from about 1.2 s, because it builds `backtrace` and its dependencies once. |
+| 15 | Compiled speed | **pass** | `fib(35)`: 65.2 ms against 58.1 ms hand-written, both with `overflow-checks=on` and aligned functions. That's 1.12× on a busy machine and 1.08–1.10× on a quiet one, against the 1.2× gate. It was 1.40× with the first trace design. Two more programs are shown but not judged: mutual recursion at 1.00–1.02× and Ackermann at 1.94–2.01×. |
 | 16 | Interpreter speed | **pass** | `fib(30)` against CPython 3.12: 1.32–1.50×, against the 2× gate. The M1 stretch goal of ≤ 1× isn't met yet. |
-| 17 | CI | **pending** | `.github/workflows/ci.yml` runs build, unit tests, `fmt`, `clippy -D warnings` and `dat-conformance all` on Linux and macOS, a step that moves a `dat build` executable and checks its trace, and `dat-conformance perf --shared-runner`. In [run 40888443973](https://github.com/iasci/dat-lang/actions/runs/40888443973) both test jobs passed, including the moved executable on macOS. Its perf job failed the guard gate at 1.11×, before the copies. The commits since then haven't run in CI. |
+| 17 | CI | **pending** | `.github/workflows/ci.yml` runs build, unit tests, `fmt`, `clippy -D warnings` and `dat-conformance all` on Linux and macOS, a step that moves a `dat build` executable and checks its trace, and `dat-conformance perf --shared-runner`. In [run 40888443973](https://github.com/iasci/dat-lang/actions/runs/40888443973) both test jobs passed, including the moved executable on macOS. Its perf job failed the guard gate at 1.11×; that number is now shown, not judged. The commits since then haven't run in CI. |
 
 ## How to check it
 
@@ -46,20 +46,12 @@ A throw has to know the dat call chain, because §12 asks for "each call that le
   - Tail calls: `dat_rt::no_tail_call()` goes before a `return f(...)`. It is an empty barrier that compiles to no instructions.
   - Function merging, which named frames after the wrong function: `-Zmerge-functions=disabled`, allowed on the pinned stable toolchain by `RUSTC_BOOTSTRAP=1` (Q50).
   - Branch merging, which merged calls from two branches into one call with no usable location: SimplifyCFG's sink and hoist, and codegen tail merging, through stable `-C llvm-args`.
-- **The stack guard** compares the address of a local with a limit static in the generated crate. It sits before the first statement that makes a call, so a recursion's base case skips it. Reading the stack pointer with inline assembly would avoid the local's stack slot, but it needs `unsafe` in dat-rt and measured mixed: Ackermann 9% faster, `fib` 6% and mutual recursion 4% slower.
-- **Recursive functions are emitted three times.** `f0_fib` checks the stack and calls `f0_fib_unchecked1`, which calls `f0_fib_unchecked2`, which calls `f0_fib` again. Everything else calls `f0_fib`. Deep recursion meets a check every third call, and the red zone covers the two unchecked frames in between. LLVM inlines the copies into one another, which also unrolls the recursion: that, not the guard, is why `fib` beats hand-written Rust. This departs from the roadmap's "one Rust function per dat function", and makes the generated Rust for all examples 7% larger. Copy counts measured against hand-written Rust:
-
-  | Copies | `fib(35)` | Ackermann | Mutual recursion |
-  |---|---|---|---|
-  | 1 | 1.19× | 3.08× | 1.02× |
-  | 3 (**built**) | 0.56× | 2.40× | 0.69× |
-  | 4 | 0.71× | 2.41× | 0.74× |
-
-  With 2 copies `fib` measured 0.80×, and with 8, 0.75×.
-- **Functions start on a 64-byte boundary** (`-Cllvm-args=-align-all-functions=6`). Without it, the same `fib` measured 1.01–1.07× hand-written Rust, depending only on where the linker put it.
+- **The stack guard** compares the stack pointer with a limit static in the generated crate. It sits before the first statement that makes a call, so a recursion's base case skips it. dat-rt reads the stack pointer with one assembly instruction that touches no memory (`mov rsp` on x86-64, `mov sp` on ARM64). That is dat-rt's only `unsafe` code (Q54), and other chips fall back to a local's address. A local's address costs every checked function a stack slot: `fib(35)` measured 1.16–1.18× with it and 1.08–1.10× with the register, and Ackermann 2.56× and 2.01×.
+- **Functions start on a 64-byte boundary**, in generated crates and in the hand-written baselines (`-Cllvm-args=-align-all-functions=6`). Without it, speed depended on where the linker put a function: dat's `fib` measured 1.01–1.07× by address alone, and hand-written Ackermann took 54.6 ms unaligned against 45.7 ms aligned.
+- **One Rust function per dat function.** Each recursive function was also tried as two or three copies that call each other in turn, with the check in only one. LLVM merges the copies and unrolls the recursion, so `fib(35)` ran at 0.64–0.86× hand-written Rust. It was dropped: it pays off only for functions that do almost nothing per call, and the generated Rust stops mapping one-to-one. A check at the function's start, and a compare straight against the limit in memory, didn't help either.
 - **`dat build` keeps line tables.** On Linux they're zlib-compressed: the executable is 2.2 MB, against 0.4 MB without line tables, and printing a trace from it takes about 40 ms. On macOS they go in a `.dSYM` next to the executable. A stripped executable still runs but prints only the innermost frame.
 
-The designs measured on `fib(35)`, against 56–61 ms hand-written here:
+The designs measured on `fib(35)`, against 56–61 ms hand-written here, or 55–58 ms with aligned functions for the last two rows:
 
 | Design | `fib(35)` | Ratio | Traces |
 |---|---|---|---|
@@ -68,8 +60,8 @@ The designs measured on `fib(35)`, against 56–61 ms hand-written here:
 | Plus a drop guard per frame that records itself while unwinding | 101–105 ms | 1.7× | exact |
 | Plus a 3-word frame record passed as 2 extra arguments | 82–85 ms | 1.4× | exact |
 | Plus a 2-word record built by the callee, with the stack guard on its address (the first M0 build) | 74–86 ms | 1.33–1.51× | exact |
-| The native stack read at the throw, plus the stack guard | 69–70 ms | 1.17–1.19× | exact |
-| The same with three copies of each recursive function and aligned functions (**built**) | 33–36 ms | 0.56–0.60× | exact |
+| The native stack read at the throw, plus the stack guard on a local's address | 65–68 ms | 1.16–1.18× | exact |
+| The same, with the stack pointer read from its register (**built**) | 61–65 ms | 1.08–1.12× | exact |
 
 Deep stacks decided the stack size. Unwinding costs grow with depth, so a bigger stack goes deeper but makes a caught overflow slower. Before the trace redesign, a caught overflow took 0.79 s and 65 MB at 64 MiB:
 
@@ -78,7 +70,7 @@ Deep stacks decided the stack size. Unwinding costs grow with depth, so a bigger
 | Uncaught overflow, simple frames | 3.6–4.0 s, 613 MB | 2.5–2.8 s, 107 MB | 1.2 s, 58 MB |
 | Uncaught overflow, the largest frames | 1.3 s, 166 MB | 1.9–2.0 s, 95 MB | 0.93 s, 51 MB |
 | Caught overflow (`deep.dat`) | 0.37–0.42 s, 18 MB | 1.49–1.55 s, 68 MB | 0.75 s, 35 MB |
-| Maximum depth, simple frames | 1.0–1.5 million | 4.1–6.1 million | 2.0–3.1 million, 6–8 million with three copies |
+| Maximum depth, simple frames | 1.0–1.5 million | 4.1–6.1 million | 2.0–3.1 million |
 | Maximum depth, the largest frames | 64,000–96,000 | 256,000–384,000 | 128,000–192,000 |
 
 std's backtrace captures and resolves every frame, at about 3.5 µs and 500 bytes each, with no bounded API, which is why it was replaced (Q51). `backtrace` and its dependencies, pinned in `Cargo.lock`:
@@ -99,11 +91,8 @@ std's backtrace captures and resolves every frame, at about 3.5 µs and 500 byte
 
 Each generated crate gets a `Cargo.lock` with exactly dat-rt's dependencies at these versions and builds with `--locked`, so once dat is built a machine needs no network for compiled programs. The dependencies build at opt-level 1 without debug info, which keeps the first build near 10 s; opt-level 0 builds faster but prints traces twice as slowly.
 
-Three copies kept the largest frames' maximum depth at 128,000–192,000 and peak memory for a caught overflow at 35 MB. Timed together, a caught overflow took 0.84–0.92 s, against 1.21–1.44 s with one copy.
-
 Still open:
 
-- **Calls at the end of a function (Q52).** Hand-written Rust turns `return ack(m - 1, 1)` into a loop. dat keeps every call, because a trace lists each call that led to an error, so Ackermann runs at 2.4× hand-written. Turning a function's calls to itself at its end into loops, in both modes, would close most of that gap: in a quick test without the guard, LLVM's version of it brought Ackermann to 1.23×. But those calls would drop out of traces, and runaway recursion would hang instead of throwing. §12's own example, `forever(n + 1);` as a function's last statement, would never end. The recommendation is to keep every call; §12 already says code that needs depth should use a loop. It is the owner's decision.
 
 - **Windows** isn't built or tested. Addresses are resolved without their frame, which may lose inlined frames there.
 - **The toolchain.** `RUSTC_BOOTSTRAP` and the LLVM flags must keep working when the pinned toolchain moves. An unknown flag fails the build loudly, and `examples/semantics/traces.dat` checks 25 trace shapes.
@@ -140,7 +129,6 @@ These are implementation choices. None of them changes the spec.
 - **Compiled traces come from the native stack, and the interpreter builds the identical trace while an error propagates.** [The trace design](#the-trace-design) has the measurements.
 - **Unwinding carries the error, and the trace is captured at the throw only when no running `try` will catch it.** `catch` is `catch_unwind` plus a downcast, and a Rust panic (a dat bug) passes through every dat `catch` and exits with status 2 as an internal error (the interim answer to Q4).
 - **The compiled stack is 32 MiB**, and the interpreter's 512 MiB. [The trace design](#the-trace-design) shows the trade-off.
-- **Recursive functions are emitted as three Rust functions**, so only one call in three checks the stack. [The trace design](#the-trace-design) has the measurements.
 - **The interpreter has typed fast paths**: `int` and `bool` expressions evaluate without the generic `Value`, which took `fib(30)` from 422 ms to 315 ms here. It still walks the IR; closure compilation stays the M1 upgrade if the stretch goal matters.
 - **One generated crate per entry file and mode**, in `target/dat-cache`, all sharing one target directory, so dat-rt builds once and an unchanged program is a Cargo no-op. Files are rewritten only when their content changes. The toolchain is pinned to 1.99.0, the one in `rust-toolchain.toml`.
 - **Tests run sequentially on one large-stack thread** (decision 16 says sequential in M1). Each test's output is captured, and the report goes through dat-rt in both modes.
@@ -155,7 +143,7 @@ Questions 1–39 of the research report still stand. Questions 45–49 were sett
 
 | # | Question | Answer |
 |---|---|---|
-| 40 | Compiled speed: which option for the failing gate? | The owner chose reading the native stack at the throw. It's built; with three copies of each recursive function, `fib(35)` runs at 0.60× hand-written Rust. |
+| 40 | Compiled speed: which option for the failing gate? | The owner chose reading the native stack at the throw. It's built, and `fib(35)` runs at 1.08–1.12× hand-written Rust. |
 | 41 | The provisional codes | The owner approved all 19 and asked for a ❌ example of each in the spec. Each now has one, except E0002 ("not supported yet"), which §21 describes because it disappears once every feature exists. None is provisional now. |
 | 42 | The test summary when nothing fails | `0 failed, 4 passed (2 ms)`, the same shape every time. |
 | 43 | `--verbose` lines for passing tests | `PASS fib.dat:41  small values`, where 41 is the line the `test` starts on. A `FAIL` line names the line that failed. |
@@ -167,6 +155,9 @@ Questions 1–39 of the research report still stand. Questions 45–49 were sett
 | 49 | A warning for a file with neither `main` nor tests | No warning: such files are libraries. |
 | 50 | Function merging needs `RUSTC_BOOTSTRAP=1` on stable | The owner chose to keep it on the pinned stable toolchain, over a pinned nightly or dropping the switch. |
 | 51 | Outside libraries | Allowed when secure, without significant performance cost, and usable as they are without workarounds; otherwise fork or write our own (`AGENTS.md`). `backtrace` is the first. |
+| 52 | Should a function's calls to itself at its end become loops, as Rust does? | No, which follows from Q53. Traces keep every call, and runaway recursion still throws `StackOverflowError` instead of hanging; §12's own `forever` example would never end otherwise. Ackermann, which leans on such calls, runs at about 2× hand-written Rust; letting LLVM loop them brought it to 1.23× in a quick test without the guard. |
+| 53 | The compiled speed target | Close to hand-written Rust, not faster: a few percent of overhead (around 4%) is acceptable for a better AI language. Judge it by everyday code, not exceptional cases such as `fib`, whose numbers are shown as the worst case. |
+| 54 | `unsafe` in dat-rt | Acceptable when it is written safely. Its one use reads the stack pointer. Generated code still forbids it. |
 
 ## What M1 builds on
 

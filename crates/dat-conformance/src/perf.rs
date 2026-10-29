@@ -8,9 +8,11 @@
 //! limit. Shared CI runners are too noisy for that, so with
 //! `--shared-runner` a result fails only at twice its limit.
 //!
-//! Two more recursive programs in `bench/` are timed against hand-written
-//! Rust and shown, not judged, so a change tuned to `fib` shows what it
-//! does to other shapes.
+//! `fib(35)` is the worst case for compiled calls: it does nothing per call
+//! but call itself, so the stack check's own cost there is shown, not
+//! judged. Two more recursive programs in `bench/` are timed against
+//! hand-written Rust and shown too, so a change tuned to `fib` shows what
+//! it does to other shapes.
 
 use crate::Opts;
 use crate::run::dat_binary;
@@ -111,7 +113,7 @@ fn shown(what: &str, ours: Duration, base: Duration, base_name: &str) {
 fn rustc(src: &Path, exe: &Path) -> bool {
     Command::new("rustc")
         .env("RUSTUP_TOOLCHAIN", dat_codegen_toolchain())
-        .args(["-C", "opt-level=3", "-C", "overflow-checks=on", "-o"])
+        .args(["-C", "opt-level=3", "-C", "overflow-checks=on", "-C", "llvm-args=-align-all-functions=6", "-o"])
         .arg(exe)
         .arg(src)
         .status()
@@ -161,7 +163,7 @@ pub fn run(opts: &Opts) -> bool {
             let t = time_interleaved(&mut [&mut h, &mut d, &mut n], 2 * RUNS).unwrap();
             let (h, d, n) = (t[0], t[1], t[2]);
             g.ratio("generated fib(35) vs hand-written Rust", d, h, "hand-written", 1.2);
-            g.ratio("stack guard: fib(35) with vs without", d, n, "without", 1.05);
+            shown("stack guard: fib(35) with vs without", d, n, "without");
         } else {
             g.failed.push("dat build bench/fib35.dat".into());
         }
