@@ -34,9 +34,15 @@ pub const TOOLCHAIN: &str = "1.99.0";
 ///   generation, turn calls in two branches into one call whose location
 ///   is neither.
 ///
-/// Each costs little: they mostly save code size.
+/// They mostly save code size. On `fib(35)` they cost nothing measurable:
+/// its hot code is the same without them.
 const TRACE_FLAGS: &[&str] =
     &["-Zmerge-functions=disabled", "-Cllvm-args=-simplifycfg-sink-common=false -simplifycfg-hoist-common=false -enable-tail-merge=false"];
+
+/// Every function starts on a 64-byte boundary. Without it, a hot
+/// function's speed depends on where the linker happens to put it: the
+/// same `fib` measured 1.01–1.07× hand-written Rust by its address alone.
+const LAYOUT_FLAGS: &[&str] = &["-Cllvm-args=-align-all-functions=6"];
 
 pub enum Mode {
     Run,
@@ -222,7 +228,7 @@ fn cargo_build(c: &Crate, profile: &str) -> Result<PathBuf, String> {
     }
     // rustc recurses over deeply nested expressions too; give it room.
     cmd.env("CARGO_TARGET_DIR", &target).env("RUSTUP_TOOLCHAIN", TOOLCHAIN).env("RUST_MIN_STACK", (256u64 << 20).to_string());
-    cmd.env("RUSTC_BOOTSTRAP", "1").env("CARGO_ENCODED_RUSTFLAGS", TRACE_FLAGS.join("\u{1f}"));
+    cmd.env("RUSTC_BOOTSTRAP", "1").env("CARGO_ENCODED_RUSTFLAGS", [TRACE_FLAGS, LAYOUT_FLAGS].concat().join("\u{1f}"));
     let out = cmd.stdin(Stdio::null()).output().map_err(|e| format!("can't run cargo: {e}"))?;
     if !out.status.success() {
         return Err(format!(

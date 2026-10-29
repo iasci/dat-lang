@@ -1,0 +1,23 @@
+// Shown by `dat-conformance perf` against bench/mutual.rs, not judged: two
+// functions that call each other (Hofstadter's female and male sequences).
+function female(n: int): int {
+  if (n == 0) {
+    return 1;
+  }
+  return n - male(female(n - 1));
+}
+
+function male(n: int): int {
+  if (n == 0) {
+    return 0;
+  }
+  return n - female(male(n - 1));
+}
+
+function main(): void {
+  let total = 0;
+  for (let i = 0; i < 85; i++) {
+    total = total + female(i) + male(i);
+  }
+  print(total);
+}

@@ -1,6 +1,7 @@
 //! Emits Rust from the typed IR.
 //!
-//! One Rust function per dat function, no macros, and every runtime-checked
+//! One Rust function per dat function (a recursive one gets `COPIES`, see
+//! below), no macros, and every runtime-checked
 //! operation calls dat-rt with a `&'static Loc`. Runtime errors unwind; a
 //! `try` block becomes a closure run by `dat_rt::catch`, and `return`,
 //! `break` and `continue` leave it as a `dat_rt::Flow` value.
@@ -9,6 +10,12 @@
 //! table of every call and throw: its line and column in this `main.rs`, as
 //! debug info reports them, and its dat location. dat-rt reads the native
 //! stack at a throw and maps it through the table (see `dat_rt::Trace`).
+//!
+//! A recursive function is emitted `COPIES` times: `f0_fib` checks the
+//! stack, and `f0_fib_unchecked1` and on don't. Each copy calls the next
+//! copy of a recursive callee, and everything else calls the checked copy,
+//! so deep recursion meets a check every `COPIES` calls. The guard's red
+//! zone covers the unchecked frames in between.
 
 #![forbid(unsafe_code)]
 
@@ -103,6 +110,8 @@ fn site_table(text: &str) -> String {
     out
 }
 
+/// The name of a function's checked copy, the one everything outside its
+/// recursion calls.
 fn fn_name(p: &ir::Program, id: ir::FuncId) -> String {
     let f = p.func(id);
     let clean: String = f.name.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();
@@ -111,8 +120,28 @@ fn fn_name(p: &ir::Program, id: ir::FuncId) -> String {
     format!("f{}_{}", id.0, clean)
 }
 
-/// `DAT_NO_STACK_GUARD=1` leaves the stack check out, only so a benchmark
-/// can measure what the guard costs.
+/// How many copies a recursive function gets: copy 0 checks the stack and
+/// the others don't, so deep recursion meets a check every `COPIES` calls.
+/// LLVM inlines copies into one another, which spreads the checks further.
+/// Against hand-written Rust (`bench/`), the build measured 1.19×, 0.56× and
+/// 0.71× on `fib(35)` with 1, 3 and 4 copies; 3.08×, 2.40× and 2.41× on
+/// `ack`; and 1.02×, 0.69× and 0.74× on `mutual`.
+const COPIES: u32 = 3;
+
+fn copies(f: &ir::Function) -> u32 {
+    if f.recursive { COPIES } else { 1 }
+}
+
+/// The name of copy `copy` of a function; copy 0 is the checked one.
+fn copy_name(p: &ir::Program, id: ir::FuncId, copy: u32) -> String {
+    match copy {
+        0 => fn_name(p, id),
+        c => format!("{}_unchecked{c}", fn_name(p, id)),
+    }
+}
+
+/// `DAT_NO_STACK_GUARD=1` leaves the stack check out of the checked copies,
+/// only so a benchmark can measure what the guard costs.
 pub fn no_stack_guard() -> bool {
     std::env::var_os("DAT_NO_STACK_GUARD").is_some_and(|v| v == "1")
 }
@@ -134,14 +163,17 @@ fn is_copy(t: Type) -> bool {
 
 /// Tests are left out unless the crate runs them, as in production builds.
 fn emit_program(index: usize, p: &ir::Program, with_tests: bool) -> String {
-    let mut g = Gen { p, index, locs: HashMap::new(), loc_order: Vec::new(), func: String::new(), calls: false };
+    let mut g = Gen { p, index, locs: HashMap::new(), loc_order: Vec::new(), func: String::new(), calls: false, next_copy: None };
     let mut funcs = String::new();
     for (i, f) in p.functions.iter().enumerate() {
         if !with_tests && p.tests.iter().any(|t| t.func.0 as usize == i) {
             continue;
         }
-        funcs.push('\n');
-        funcs.push_str(&g.function(ir::FuncId(i as u32), f));
+        let id = ir::FuncId(i as u32);
+        for copy in 0..copies(f) {
+            funcs.push('\n');
+            funcs.push_str(&g.function(id, f, copy));
+        }
     }
     let mut out = String::new();
     let _ = writeln!(out, "mod p{index} {{\n    pub const FILE: &str = {:?};", p.file);
@@ -174,6 +206,10 @@ struct Gen<'p> {
     func: String,
     /// Whether it calls dat functions, so its `void` returns need `no_tail_call`.
     calls: bool,
+    /// In a recursive function's copy, the copy of a recursive callee that
+    /// its calls go to: the next one, so a check comes every `COPIES` calls.
+    /// Everything else calls the checked copy.
+    next_copy: Option<u32>,
 }
 
 /// Where `return`, `break` and `continue` go from the code being emitted.
@@ -210,8 +246,9 @@ impl<'p> Gen<'p> {
         format!("l{}_{}", l.0, clean)
     }
 
-    fn function(&mut self, id: ir::FuncId, f: &ir::Function) -> String {
+    fn function(&mut self, id: ir::FuncId, f: &ir::Function, copy: u32) -> String {
         self.func = f.name.clone();
+        self.next_copy = f.recursive.then_some((copy + 1) % COPIES);
         self.calls = block_calls(&f.body);
         let params: Vec<String> =
             (0..f.params).map(|i| format!("{}: {}", self.local(f, ir::LocalId(i)), rust_type(f.locals[i as usize].ty))).collect();
@@ -220,12 +257,12 @@ impl<'p> Gen<'p> {
             t => format!(" -> {}", rust_type(t)),
         };
         let mut s = String::new();
-        let _ = writeln!(s, "pub fn {}({}){ret} {{", fn_name(self.p, id), params.join(", "));
+        let _ = writeln!(s, "pub fn {}({}){ret} {{", copy_name(self.p, id, copy), params.join(", "));
         let ctx = Ctx { in_closure: false, lp: None, any_loop: false };
         let mut loops = 0;
         // The stack check goes right before the first statement that calls,
         // so a call that returns early, like a recursion's base case, skips it.
-        let guard = f.recursive && !no_stack_guard();
+        let guard = f.recursive && copy == 0 && !no_stack_guard();
         let split = if guard { f.body.iter().position(|st| block_calls(std::slice::from_ref(st))).unwrap_or(0) } else { 0 };
         s.push_str(&self.block(f, &f.body[..split], ctx, 1, &mut loops));
         if guard {
@@ -446,7 +483,11 @@ impl<'p> Gen<'p> {
             ExprKind::Call { func, args, loc } => {
                 let (m, _) = self.site(*loc);
                 let vals: Vec<String> = args.iter().map(|a| self.expr(f, a)).collect();
-                format!("{m}{}({})", fn_name(self.p, *func), vals.join(", "))
+                let copy = match self.next_copy {
+                    Some(c) if self.p.func(*func).recursive => c,
+                    _ => 0,
+                };
+                format!("{m}{}({})", copy_name(self.p, *func, copy), vals.join(", "))
             }
             ExprKind::IntArith { op, lhs, rhs, loc } => {
                 let name = match op {

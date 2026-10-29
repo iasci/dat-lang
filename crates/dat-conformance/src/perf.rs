@@ -7,6 +7,10 @@
 //! from the reference machine, where every budget and gate fails at its
 //! limit. Shared CI runners are too noisy for that, so with
 //! `--shared-runner` a result fails only at twice its limit.
+//!
+//! Two more recursive programs in `bench/` are timed against hand-written
+//! Rust and shown, not judged, so a change tuned to `fib` shows what it
+//! does to other shapes.
 
 use crate::Opts;
 use crate::run::dat_binary;
@@ -98,6 +102,22 @@ impl Gates {
     }
 }
 
+fn shown(what: &str, ours: Duration, base: Duration, base_name: &str) {
+    let r = ms(ours) / ms(base);
+    println!("  {what:<44} {:>9.1} ms   {base_name} {:.1} ms: {r:.2}x   not judged", ms(ours), ms(base));
+}
+
+/// Builds a hand-written baseline in `bench/` as bench/fib35.rs says.
+fn rustc(src: &Path, exe: &Path) -> bool {
+    Command::new("rustc")
+        .env("RUSTUP_TOOLCHAIN", dat_codegen_toolchain())
+        .args(["-C", "opt-level=3", "-C", "overflow-checks=on", "-o"])
+        .arg(exe)
+        .arg(src)
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 pub fn run(opts: &Opts) -> bool {
     let dat = dat_binary();
     let root = &opts.root;
@@ -128,13 +148,7 @@ pub fn run(opts: &Opts) -> bool {
 
     println!("compiled speed (criteria 9 and 15)");
     let hand = out.join("fib35_hand");
-    let status = Command::new("rustc")
-        .env("RUSTUP_TOOLCHAIN", dat_codegen_toolchain())
-        .args(["-C", "opt-level=3", "-C", "overflow-checks=on", "-o"])
-        .arg(&hand)
-        .arg(bench.join("fib35.rs"))
-        .status();
-    if !status.is_ok_and(|s| s.success()) {
+    if !rustc(&bench.join("fib35.rs"), &hand) {
         println!("  can't build bench/fib35.rs with rustc; skipping the compiled gates");
         g.failed.push("build bench/fib35.rs".into());
     } else {
@@ -151,6 +165,20 @@ pub fn run(opts: &Opts) -> bool {
         } else {
             g.failed.push("dat build bench/fib35.dat".into());
         }
+    }
+
+    println!("other recursion, shown but not judged");
+    for (name, what) in [("ack", "generated ack(3, 10) vs hand-written Rust"), ("mutual", "generated mutual recursion vs hand-written")] {
+        let (hand, ours) = (out.join(format!("{name}_hand")), out.join(format!("{name}_dat")));
+        let built = rustc(&bench.join(format!("{name}.rs")), &hand)
+            && run_in(&bench, &["build", &format!("{name}.dat"), "-o"]).arg(&ours).status().is_ok_and(|s| s.success());
+        if !built {
+            println!("  can't build bench/{name}.dat or bench/{name}.rs");
+            g.failed.push(format!("build bench/{name}"));
+            continue;
+        }
+        let t = time_interleaved(&mut [&mut Command::new(&ours), &mut Command::new(&hand)], RUNS).unwrap();
+        shown(what, t[0], t[1], "hand-written");
     }
 
     println!("interpreter speed (criterion 16)");
