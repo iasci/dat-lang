@@ -16,7 +16,7 @@ export struct Vector {
   y: float;
 
   magnitude(): float {
-    return Math.sqrt(this.x * this.x + this.y * this.y);
+    return (this.x * this.x + this.y * this.y).sqrt();
   }
 }
 

@@ -24,11 +24,13 @@ interface User { name: string; }   // ❌ E1501: interfaces can't declare fields
 A struct implements an interface by declaring `implements` and defining the interface's methods:
 
 ```
+import { PI } from "@dat/math";
+
 struct Circle implements Shape {
   radius: float;
 
   area(): float {
-    return Math.PI * this.radius * this.radius;
+    return PI * this.radius * this.radius;
   }
 
   name(): string {

@@ -69,13 +69,15 @@ const len = user?.name.length ?? 0;      // int
 `match` picks a branch by value or by type. It's an expression, it must cover every case, and there's no fall-through.
 
 ```
+import { PI } from "@dat/math";
+
 const label = match (status) {
   Status.Active => "active",
   Status.Suspended | Status.Deleted => "inactive",
 };
 
 const area = match (shape) {
-  Circle => Math.PI * shape.radius * shape.radius,
+  Circle => PI * shape.radius * shape.radius,
   Square => shape.side * shape.side,
 };
 ```

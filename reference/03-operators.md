@@ -17,10 +17,10 @@ dat supports `+`, `-`, `*`, `/`, `%` and unary `-`.
 10 / 5       // 2.0, a float
 ```
 
-`/` always returns a `float`. For integer division, use `Math.trunc(a / b)` or `Math.floor(a / b)`. When these are applied directly to `a / b` with two `int` operands, the compiler computes the result exactly in integer arithmetic.
+`/` always returns a `float`. For integer division, use `(a / b).toInt()` or `(a / b).floor()`. When these are applied directly to `a / b` with two `int` operands, the compiler computes the result exactly in integer arithmetic.
 
 ```
-const middle = Math.floor((low + high) / 2);   // int
+const middle = ((low + high) / 2).floor();   // int
 ```
 
 Edge cases:
@@ -57,7 +57,7 @@ let total = 0;
 total += 5;
 total *= 2;      // 10
 total /= 4;      // ❌ E0302: total is an int, but `total / 4` is a float
-                 //    option: total = Math.floor(total / 4);
+                 //    option: total = (total / 4).floor();
                  //    option (declaration): let total = 0.0;
 ```
 

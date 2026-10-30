@@ -5,7 +5,7 @@ Tests are part of the language. A `test` block declares a test, and `dat test` f
 ```
 // math.dat
 export function clamp(value: int, low: int, high: int): int {
-  return Math.max(low, Math.min(value, high));
+  return value.min(high).max(low);
 }
 
 test "clamp keeps values inside the range" {
@@ -31,7 +31,7 @@ test "adds" { assert(2 + 2 == 4); }   // ❌ E2050: a test named "adds" already 
 
 ## Failure Output
 
-When an `assert` condition is a comparison, a failure shows both sides, so finding the cause rarely needs an extra `print`. Suppose `clamp` forgot the lower bound and returned `Math.min(value, high)`. The failure shows:
+When an `assert` condition is a comparison, a failure shows both sides, so finding the cause rarely needs an extra `print`. Suppose `clamp` forgot the lower bound and returned `value.min(high)`. The failure shows:
 
 ```
 FAIL math.dat:8  clamp keeps values inside the range

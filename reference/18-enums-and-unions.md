@@ -74,9 +74,11 @@ Other fields and methods need narrowing first, using `is` or `match`.
 `match` chooses a branch by comparing a value against a list of patterns.
 
 ```
+import { PI } from "@dat/math";
+
 function area(shape: Shape): float {
   return match (shape) {
-    Circle => Math.PI * shape.radius * shape.radius,
+    Circle => PI * shape.radius * shape.radius,
     Square => shape.side * shape.side,
   };
 }

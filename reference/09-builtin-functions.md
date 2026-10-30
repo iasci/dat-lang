@@ -10,6 +10,8 @@ These are available everywhere without an import.
 | `fail` | `(message: string) => never` | Throw an `AssertionError` with `message` |
 | `parallel` | `(...tasks, onFailure?) => [...results]` | Run each function as a task, wait for all of them, and return their results as a tuple. See [Concurrency](./22-concurrency.md#parallel). |
 
+Rounding, square roots and the other math operations are [methods on numbers](./04-primitive-methods.md), and also functions in the [`@dat/math`](./04-primitive-methods.md#the-datmath-module) module.
+
 ## `print`
 
 `print` accepts any number of values of any type. It converts each one with `toString()`, joins them with spaces, ends the line, and writes the result to stdout. Strings are printed without quotes.
@@ -58,28 +60,3 @@ const port = match (env) {
 ```
 
 Like every runtime error, it can be caught. See [Errors](./12-errors.md) for when to use a runtime error and when to declare one.
-
-## `Math`
-
-| Member | Signature | Description |
-| --- | --- | --- |
-| `Math.PI` | `float` | π |
-| `Math.E` | `float` | e |
-| `Math.abs(x)` | `(x: int) => int`<br>`(x: float) => float` | Absolute value |
-| `Math.min(...values)` | `(...values: int) => int`<br>`(...values: float) => float` | Smallest value. Throws a `RangeError` when given none. |
-| `Math.max(...values)` | `(...values: int) => int`<br>`(...values: float) => float` | Largest value. Throws a `RangeError` when given none. |
-| `Math.floor(x)` | `(x: float) => int` | Round down |
-| `Math.ceil(x)` | `(x: float) => int` | Round up |
-| `Math.round(x)` | `(x: float) => int` | Round to nearest; halves round up: `Math.round(-2.5)` is `-2` |
-| `Math.trunc(x)` | `(x: float) => int` | Round toward zero |
-| `Math.sqrt(x)` | `(x: float) => float` | Square root |
-| `Math.pow(base, exponent)` | `(base: float, exponent: float) => float` | `base` to the power of `exponent` |
-
-`Math` functions that take a `float` also accept an `int`. If any argument to `min` or `max` is a `float`, the result is a `float`. `floor`, `ceil`, `round` and `trunc` throw a `RangeError` when the result is `NaN` or doesn't fit in an `int`. When they're applied directly to an `int / int` division, the result is computed exactly. See [Arithmetic](./03-operators.md#arithmetic).
-
-```
-Math.max(3, 7, 5)              // 7
-Math.max(...scores)            // largest score; throws RangeError if scores is empty
-Math.sqrt(16)                  // 4.0
-Math.floor(7 / 2)              // 3
-```

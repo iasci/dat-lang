@@ -152,7 +152,7 @@ Every built-in error type is a struct with one field, `message: string`.
 | --- | --- | --- |
 | `Error` | Declared | Code that doesn't need specific error types. See [The `Error` Type](#the-error-type). |
 | `ValueError` | Declared | `string.toInt()` and `string.toFloat()` when the text isn't a number |
-| `RangeError` | Runtime | `xs[i]`, `xs.at(i)` and `s[i]` with an index out of range; `pop()` and `shift()` on an empty list; `insert` and `removeAt` with an invalid index; a string position inside a multi-byte character; destructuring a list that's too short when no default is given; `int` overflow and `int % 0`; `float.toInt()`, `Math.floor`, `Math.ceil`, `Math.round` and `Math.trunc` when the value is `NaN` or out of range; `Math.min()` and `Math.max()` with no values; `range` with a `step` of `0` |
+| `RangeError` | Runtime | `xs[i]`, `xs.at(i)` and `s[i]` with an index out of range; `pop()` and `shift()` on an empty list; `insert` and `removeAt` with an invalid index; a string position inside a multi-byte character; destructuring a list that's too short when no default is given; `int` overflow and `int % 0`; `toInt()`, `floor()`, `ceil()` and `round()` on a float that's `NaN` or out of range, and the same functions in `@dat/math`; `min()` and `max()` from `@dat/math` with no values; `range` with a `step` of `0` |
 | `KeyError` | Runtime | `m[key]` when `key` is missing |
 | `TypeError` | Runtime | `x!` when `x` is `null`; `x as T` when `x` isn't a `T` |
 | `AssertionError` | Runtime | A failed `assert`; `fail(message)`; `try!` when the call fails; a module constant whose initializer depends on itself |

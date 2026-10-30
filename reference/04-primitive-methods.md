@@ -39,6 +39,11 @@ print([price, price]);     // [$19.99, $19.99]
 | Method | Signature | Description |
 | --- | --- | --- |
 | `toFloat()` | `() => float` | Convert to a float |
+| `abs()` | `() => int` | Absolute value. Throws a `RangeError` for the smallest `int`, whose absolute value doesn't fit. |
+| `min(other)` | `(other: int) => int` | The smaller of the two |
+| `max(other)` | `(other: int) => int` | The larger of the two |
+| `sqrt()` | `() => float` | Square root, as a float: `1000.sqrt()` is `31.622776601683793` |
+| `pow(exponent)` | `(exponent: int) => int` | The value to the power of `exponent`, computed exactly: `10.pow(3)` is `1000`. Throws a `RangeError` if `exponent` is negative or the result doesn't fit in an `int`. |
 | `toString()` | `() => string` | Convert to text |
 
 ## `float` Methods
@@ -46,11 +51,19 @@ print([price, price]);     // [$19.99, $19.99]
 | Method | Signature | Description |
 | --- | --- | --- |
 | `toInt()` | `() => int` | Truncate toward zero. Throws a `RangeError` if the value is `NaN` or outside the `int` range. |
+| `floor()` | `() => int` | Round down. Throws a `RangeError` as `toInt()` does. |
+| `ceil()` | `() => int` | Round up. Throws a `RangeError` as `toInt()` does. |
+| `round()` | `() => int` | Round to nearest; halves round up, so `(-2.5).round()` is `-2`. Throws a `RangeError` as `toInt()` does. |
+| `abs()` | `() => float` | Absolute value |
+| `sqrt()` | `() => float` | Square root |
+| `pow(exponent)` | `(exponent: float) => float` | The value to the power of `exponent` |
+| `min(other)` | `(other: float) => float` | The smaller of the two |
+| `max(other)` | `(other: float) => float` | The larger of the two |
 | `toFixed(digits)` | `(digits: int) => string` | Text with exactly `digits` decimals, rounded to nearest with ties away from zero: `3.14159.toFixed(2)` is `"3.14"` |
 | `isNaN()` | `() => bool` | `true` if the value is `NaN` |
 | `toString()` | `() => string` | Convert to text |
 
-For rounding to an `int`, see `Math.floor`, `Math.ceil`, `Math.round` and `Math.trunc` in [Built-in Functions](./09-builtin-functions.md#math).
+`toInt()`, `floor()`, `ceil()` and `round()` applied directly to a division of two `int`s, as in `(a / b).floor()`, are computed exactly in integer arithmetic. See [Arithmetic](./03-operators.md#arithmetic).
 
 ## `string` Methods
 
@@ -112,3 +125,31 @@ for (const c of "héllo") {
 const chars = [..."héllo"];  // ["h", "é", "l", "l", "o"]
 print(chars.length);         // 5, while "héllo".length is 6
 ```
+
+## The `@dat/math` Module
+
+The same operations also exist as functions, for code that prefers calling them, along with two constants:
+
+```
+import * as math from "@dat/math";
+
+const radius = 2.0;
+print(math.PI * radius * radius);   // 12.566370614359172
+print(math.floor(7 / 2));           // 3
+```
+
+| Member | Signature | Description |
+| --- | --- | --- |
+| `PI` | `float` | π |
+| `E` | `float` | e |
+| `abs(x)` | `(x: int) => int`<br>`(x: float) => float` | `x.abs()` |
+| `min(...values)` | `(...values: int) => int`<br>`(...values: float) => float` | The smallest value. Throws a `RangeError` when given none. |
+| `max(...values)` | `(...values: int) => int`<br>`(...values: float) => float` | The largest value. Throws a `RangeError` when given none. |
+| `floor(x)` | `(x: float) => int` | `x.floor()` |
+| `ceil(x)` | `(x: float) => int` | `x.ceil()` |
+| `round(x)` | `(x: float) => int` | `x.round()` |
+| `trunc(x)` | `(x: float) => int` | `x.toInt()` |
+| `sqrt(x)` | `(x: float) => float` | `x.sqrt()` |
+| `pow(base, exponent)` | `(base: int, exponent: int) => int`<br>`(base: float, exponent: float) => float` | `base.pow(exponent)` |
+
+The functions that take a `float` also accept an `int`. If any argument to `min` or `max` is a `float`, the result is a `float`. Applied directly to a division of two `int`s, `floor`, `ceil`, `round` and `trunc` are exact, as the methods are.

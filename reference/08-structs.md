@@ -174,11 +174,11 @@ struct Temperature {
   celsius: float;
 
   operator equals(other: Temperature): bool {
-    return Math.round(this.celsius * 10) == Math.round(other.celsius * 10);
+    return (this.celsius * 10).round() == (other.celsius * 10).round();
   }
 
   hash(): int {
-    return Math.round(this.celsius * 10);
+    return (this.celsius * 10).round();
   }
 }
 
@@ -293,11 +293,13 @@ Rules:
 A struct implements interfaces with `implements` and must define every method they require that has no default:
 
 ```
+import { PI } from "@dat/math";
+
 struct Circle implements Shape, Named {
   radius: float;
 
   area(): float {
-    return Math.PI * this.radius * this.radius;
+    return PI * this.radius * this.radius;
   }
 
   name(): string {

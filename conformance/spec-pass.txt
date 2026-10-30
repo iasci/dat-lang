@@ -34,9 +34,9 @@
 06-functions.md:218#E0661@219
 06-functions.md:224#ok
 06-functions.md:224#E0660@225
-07-control-flow.md:89#ok
-07-control-flow.md:158#ok
-07-control-flow.md:158#E0750@161
+07-control-flow.md:91#ok
+07-control-flow.md:160#ok
+07-control-flow.md:160#E0750@163
 12-errors.md:85#ok
 12-errors.md:85#E1251@92
 12-errors.md:85#E1252@93
