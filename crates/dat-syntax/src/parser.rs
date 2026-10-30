@@ -922,6 +922,12 @@ impl<'a> Parser<'a> {
                 self.bump();
                 ExprKind::Unsupported { what: "`this`" }
             }
+            // `.Active`, an enum member whose enum comes from the expected type.
+            T::Dot if self.tok(1).kind == T::Ident => {
+                self.bump();
+                self.bump();
+                ExprKind::Unsupported { what: "enum members without the enum's name" }
+            }
             T::Ident if self.at_match() => {
                 self.bump();
                 let span = t.span.to(self.skip_group()?).to(self.skip_group()?);

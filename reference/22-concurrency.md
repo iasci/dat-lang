@@ -103,13 +103,11 @@ By default, nothing that talks to the outside world is cut off. A request cut of
 - Tasks that haven't started don't start. The remaining items of a `parallelMap` are skipped, and `group.start` throws a `StoppedError` instead of starting a task.
 - A wait that might never end on its own, such as waiting for a new connection, ends with a `StoppedError`. The standard library says which of its waits these are.
 
-With `OnFailure.Stop` as the last argument, the other tasks are stopped at once. Whatever they're waiting on, or wait on next, ends with a `StoppedError`, even a request on its way. Use it when the tasks only read, so cutting them off loses nothing:
+With `OnFailure.Stop`, or [`.Stop`](./18-enums-and-unions.md#leaving-out-the-enums-name) for short, as the last argument, the other tasks are stopped at once. Whatever they're waiting on, or wait on next, ends with a `StoppedError`, even a request on its way. Use it when the tasks only read, so cutting them off loses nothing:
 
 ```
-import { OnFailure } from "@dat/tasks";
-
-const [user, orders] = try parallel(() => try fetchUser(id), () => try fetchOrders(id), OnFailure.Stop);
-const pages = try urls.parallelMap((url) => try fetchPage(url), OnFailure.Stop);
+const [user, orders] = try parallel(() => try fetchUser(id), () => try fetchOrders(id), .Stop);
+const pages = try urls.parallelMap((url) => try fetchPage(url), .Stop);
 ```
 
 Leaving out `OnFailure.Stop` is never a bug: a failure only takes longer to report.

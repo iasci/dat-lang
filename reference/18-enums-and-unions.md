@@ -14,6 +14,32 @@ print(status == Status.Active);      // true
 
 Members have no attached values. Enums support `==`, are [hashable](./01-builtin-types.md#equality-hashing-and-ordering), and can be matched exhaustively with [`match`](#match).
 
+### Leaving Out the Enum's Name
+
+Where an enum is expected, a member can be written without the enum's name:
+
+```
+enum Status { Active, Suspended, Deleted }
+
+let status: Status = .Active;
+status = .Suspended;
+print(status == .Suspended);   // true
+
+const label = match (status) {
+  .Active => "active",
+  .Suspended | .Deleted => "inactive",
+};
+```
+
+- The expected enum comes from where the value goes: a parameter, a declared type, a function's return type, the other side of `==` or `!=`, or the value a `match` checks.
+- It works for an enum from another module without importing it, because the place it goes names the enum. `parallel` takes [`.Stop`](./22-concurrency.md#what-happens-to-the-other-tasks) with no import of `OnFailure`.
+- The full name, such as `Status.Active`, is still valid. Where nothing says which enum is meant, it's needed:
+
+```
+const first = .Active;   // ❌ E1802: nothing says which enum `.Active` belongs to
+                         //    fix: const first = Status.Active;
+```
+
 ## Union Types
 
 A union type holds a value of one of several types, and knows which one it holds.
@@ -91,7 +117,7 @@ Each arm is `pattern => result`, and arms are separated by commas. Arms are trie
 | Pattern | Matches |
 | --- | --- |
 | A type: `Circle`, `int`, `null` | A union or interface value that holds that type |
-| An enum member: `Status.Active` | That member |
+| An enum member: `Status.Active`, or `.Active` | That member |
 | A literal: `0`, `"GET"`, `true` | An equal value |
 | `A \| B` | Either pattern |
 | `_` | Anything |
