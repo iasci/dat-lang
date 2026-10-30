@@ -1,0 +1,4 @@
+# Spec cases that fail today, each with the reason. A listed case that
+# starts passing is reported, so the list only shrinks.
+22-concurrency.md:214#E2205@215 the compiler doesn't recognize `await` yet
+22-concurrency.md:214#E2206@217 the compiler doesn't recognize `async` yet, and the spec runner doesn't treat `async function` as a declaration

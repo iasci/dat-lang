@@ -8,6 +8,7 @@ These are available everywhere without an import.
 | `range` | `(end: int) => list<int>`<br>`(start: int, end: int, step: int = 1) => list<int>` | Integers from `start` (default `0`) up to but not including `end` |
 | `assert` | `(condition: bool, message: string?) => void` | Throw an `AssertionError` if `condition` is `false` |
 | `fail` | `(message: string) => never` | Throw an `AssertionError` with `message` |
+| `parallel` | `(...tasks, onFailure?) => [...results]` | Run each function as a task, wait for all of them, and return their results as a tuple. See [Concurrency](./22-concurrency.md#parallel). |
 
 ## `print`
 

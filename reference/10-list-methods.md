@@ -62,6 +62,7 @@ These need a list that can be modified: a `let` variable, a `mut` parameter, or 
 | `concat(other)` | `(other: list<T>) => list<T>` | A new list with `other`'s elements added at the end |
 | `join(separator?)` | `(separator: string = ",") => string` | The elements' `toString()` texts joined with `separator` |
 | `map(fn)` | `(fn: (item: T) => U) => list<U>` | Apply `fn` to every element |
+| `parallelMap(fn, onFailure?)` | `(fn: (item: T) => U, onFailure: OnFailure = OnFailure.Finish) => list<U>` | Like `map`, with each call to `fn` running as its own task. See [Concurrency](./22-concurrency.md#parallelmap). |
 | `filter(fn)` | `(fn: (item: T) => bool) => list<T>` | The elements for which `fn` returns `true` |
 | `flatMap(fn)` | `(fn: (item: T) => list<U>) => list<U>` | Apply `fn` and join the resulting lists |
 | `flat()` | `() => list<U>` | Join a `list<list<U>>` into a `list<U>` |

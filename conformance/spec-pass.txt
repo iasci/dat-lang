@@ -56,5 +56,9 @@
 20-testing.md:27#E2050@29
 21-command-line.md:68#ok
 21-command-line.md:68#E0001@70
+22-concurrency.md:168#ok
+22-concurrency.md:181#ok
+22-concurrency.md:214#ok
+22-concurrency.md:239#ok
 README.md:19#ok
 README.md:19#E0301@20

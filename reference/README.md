@@ -6,7 +6,7 @@ dat is a statically typed language with TypeScript-style syntax. During developm
 
 Every rule in this reference follows from one of these. When a rule looks odd, one of these is the reason.
 
-1. **Values, not references.** Every value, whether a number, a string, a list or a struct, behaves the way a number does: assigning or passing it hands over an independent copy. Copies are cheap because they share memory until one of them changes (copy-on-write). A function can change the caller's value only when the caller passes it with `mut`. There is no garbage collector, no aliasing and no shared mutable state.
+1. **Values, not references.** Every value, whether a number, a string, a list or a struct, behaves the way a number does: assigning or passing it hands over an independent copy. Copies are cheap because they share memory until one of them changes (copy-on-write). A function can change the caller's value only when the caller passes it with `mut`. There is no garbage collector and no aliasing. The one value that copies don't separate is a [`Shared<T>`](./22-concurrency.md#sharedt), made for state that tasks change together.
 2. **Syntax inspired by TypeScript.** Much of the syntax and many method names come from TypeScript, because coding agents and developers already know them. What the code means follows dat's own goals: a simple language, fast programs and clear errors.
 3. **One way to write each thing.** No `==` next to `===`, no classes next to structs, no `function` expressions next to arrow functions. Fewer choices give more uniform code and fewer mistakes.
 4. **Failure is visible and recoverable.** A function that can fail in an expected way says so in its signature (`throws`), and every call to it is marked with `try`. Operations that can fail anywhere, such as an out-of-range index, a missing map key or a failed assertion, throw built-in runtime errors that need no marking. Both kinds can be caught, so one bad input doesn't have to stop the program.
@@ -53,11 +53,12 @@ The code, the line the error is reported on and the fix are part of the language
 19. [Generics](./19-generics.md)
 20. [Testing](./20-testing.md)
 21. [Command Line](./21-command-line.md)
+22. [Concurrency](./22-concurrency.md)
 
 ## Not yet specified
 
-- Concurrency and async
-- Shared references, for graphs, caches and state shared between tasks
+- Channels, for tasks that send each other values while they run
+- Shared references, for graphs
 - Standard library beyond the built-ins: I/O, JSON, time, randomness, HTTP
 - Packages, dependencies and calling Rust crates
 - Bitwise operators
