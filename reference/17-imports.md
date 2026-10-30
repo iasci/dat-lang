@@ -2,7 +2,7 @@
 
 Every `.dat` file is a module. A module contains only declarations: `function`, `struct`, `enum`, `interface`, `type`, `const` and `test`. A module has no top-level statements and no module-level `let`, so importing a module never runs code and there's no global mutable state.
 
-All import paths are explicit, with no magic resolution. Paths include the `.dat` extension and start with `./` or `../`.
+All import paths are explicit, with no magic resolution. File paths include the `.dat` extension and start with `./` or `../`. The standard library and packages start with `@`, as in `"@dat/tasks"`.
 
 ## Exporting
 
@@ -156,7 +156,13 @@ This is the only way to make a folder's internal symbols visible outside it.
 - `./` starts a same-folder (sibling) import.
 - `../` starts a parent-relative import.
 - Importing a folder, such as `"../math"`, resolves to the `index.dat` inside it. This is the only implicit resolution, similar to a web server's `index.html`.
-- Bare names such as `"math"` are reserved for the standard library and for packages, which aren't specified yet.
+- `@` starts a module that isn't a file. `"@dat/..."` is the standard library, as in `"@dat/tasks"`. Any other `"@owner/name"` is a package, such as `"@acme/postgres"`: every package name starts with its owner, so two owners can each publish a `postgres`, and the standard library can add a module without taking a name from anyone. No package can use the owner names `dat` and `std`, so nothing can pass itself off as the standard library. Packages aren't specified yet.
+- A path that starts with none of `./`, `../` and `@` is an error. When the standard library has a module of that name, the fix adds `@dat/`:
+
+```
+import { Shared } from "tasks";   // ❌ E1703: an import path starts with `./`, `../` or `@`
+                                  //    fix: import { Shared } from "@dat/tasks";
+```
 
 ## Program Entry
 

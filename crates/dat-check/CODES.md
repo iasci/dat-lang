@@ -40,7 +40,7 @@ compiler added, approved with their ❌ examples at M0, end in 50–99.
 | E2050 | spec §20 | Two tests in one module have the same name | — |
 
 The spec's other codes (E0101–E0104, E0202, E0206, E0302, E0501, E0602,
-E0603, E0702, E0703, E0801, E0802, E1501, E1701, E1702 and E1801) belong to
+E0603, E0702, E0703, E0801, E0802, E1501, E1701–E1703 and E1801) belong to
 constructs that later milestones implement: collections, floats, narrowing,
 closures, nullable types, `mut` loops, structs, interfaces, imports and
 enums. The conformance
