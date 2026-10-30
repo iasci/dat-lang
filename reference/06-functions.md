@@ -76,7 +76,7 @@ function parsePort(text: string): int throws ParseError { ... }
 
 ## Parameters
 
-Arguments are passed by position. A parameter with a default value can be left out, and a nullable parameter defaults to `null`. Parameters with defaults go after the required ones.
+Arguments are passed by position. A parameter with a default value can be left out, and a nullable parameter defaults to `null`. Parameters with defaults go after the required ones. A default can be any expression, including one that uses the parameters before it, as in `end: int = start + 10`. It's worked out each time a call leaves that argument out.
 
 ```
 function connect(host: string, port: int = 5432, label: string?): void {
