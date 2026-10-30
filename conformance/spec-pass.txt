@@ -1,6 +1,7 @@
 # Spec cases that pass in both modes. The list may only grow:
 # `dat-conformance spec --bless` adds new passes.
-01-builtin-types.md:124#ok
+01-builtin-types.md:90#ok
+01-builtin-types.md:130#ok
 02-variable-declaration.md:130#ok
 02-variable-declaration.md:130#E0250@132
 02-variable-declaration.md:130#E0252@134
@@ -43,6 +44,7 @@
 12-errors.md:178#ok
 12-errors.md:178#E1250@179
 12-errors.md:236#ok
+13-reserved-keywords.md:30#ok
 14-scope.md:5#ok
 14-scope.md:5#E1401@14
 14-scope.md:21#ok

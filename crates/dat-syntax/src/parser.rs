@@ -55,8 +55,6 @@ struct Parser<'a> {
 /// Deeper nesting is an error, so no later stage can overflow its stack.
 const MAX_NESTING: u32 = 8000;
 
-const ITEM_KEYWORDS: [Kw; 8] = [Kw::Function, Kw::Test, Kw::Struct, Kw::Enum, Kw::Interface, Kw::Type, Kw::Import, Kw::Export];
-
 impl<'a> Parser<'a> {
     // ---- token access ----
 
@@ -100,6 +98,80 @@ impl<'a> Parser<'a> {
 
     fn eat_kw(&mut self, kw: Kw) -> bool {
         self.eat(T::Keyword(kw))
+    }
+
+    /// Words such as `type`, `match` and `of` aren't reserved: they're
+    /// identifiers that mean something only where they appear.
+    fn at_word(&self, word: &str) -> bool {
+        self.word_at(0, word)
+    }
+
+    fn word_at(&self, k: usize, word: &str) -> bool {
+        let t = self.tok(k);
+        t.kind == T::Ident && self.text_of(t.span) == word
+    }
+
+    fn eat_word(&mut self, word: &str) -> bool {
+        if self.at_word(word) {
+            self.bump();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// `mut` before a name marks a `mut` parameter or argument. Anywhere else,
+    /// as in `mut: int` or `f(mut)`, it's a name.
+    fn eat_mut(&mut self) -> bool {
+        if self.at_word("mut") && matches!(self.peek_at(1), T::Ident | T::Keyword(Kw::This)) {
+            self.bump();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The offset of the bracket that closes the one `k` tokens ahead.
+    fn closing(&self, mut k: usize) -> Option<usize> {
+        let mut depth = 0;
+        loop {
+            match self.peek_at(k) {
+                T::LParen | T::LBracket | T::LBrace => depth += 1,
+                T::RParen | T::RBracket | T::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(k);
+                    }
+                }
+                T::Eof => return None,
+                _ => {}
+            }
+            k += 1;
+        }
+    }
+
+    /// At `match (...) {`, a `match` expression rather than a call to a
+    /// function named `match`.
+    fn at_match(&self) -> bool {
+        self.at_word("match") && self.peek_at(1) == T::LParen && self.closing(1).is_some_and(|close| self.peek_at(close + 1) == T::LBrace)
+    }
+
+    /// The start of a top-level declaration, `k` tokens ahead: `function`, or
+    /// a declaration word followed by what that declaration needs next.
+    fn item_start_at(&self, k: usize) -> bool {
+        let t = self.tok(k);
+        let next = self.peek_at(k + 1);
+        match t.kind {
+            T::Keyword(Kw::Function) => true,
+            T::Ident => match self.text_of(t.span) {
+                "test" => next == T::Str,
+                "struct" | "enum" | "interface" | "type" => next == T::Ident,
+                "import" => matches!(next, T::LBrace | T::Star),
+                "export" => matches!(next, T::LBrace | T::Star | T::Keyword(Kw::Const)) || self.item_start_at(k + 1),
+                _ => false,
+            },
+            _ => false,
+        }
     }
 
     /// End of the previous significant token.
@@ -239,7 +311,7 @@ impl<'a> Parser<'a> {
                 if self.pos == start {
                     self.bump();
                 }
-                while !self.at(T::Eof) && !ITEM_KEYWORDS.iter().any(|&k| self.at_kw(k)) {
+                while !self.at(T::Eof) && !self.item_start_at(0) {
                     self.bump();
                 }
             }
@@ -248,46 +320,48 @@ impl<'a> Parser<'a> {
 
     fn item(&mut self) -> PResult<()> {
         let start = self.tok(0).span;
-        let exported = self.eat_kw(Kw::Export);
-        let kind = match self.peek() {
-            T::Keyword(Kw::Function) => ItemKind::Function(self.function(exported)?),
-            T::Keyword(Kw::Test) => {
+        let exported = self.eat_word("export");
+        let t = self.tok(0);
+        let word = if t.kind == T::Ident { self.text_of(t.span) } else { "" };
+        let kind = match (t.kind, word) {
+            (T::Keyword(Kw::Function), _) => ItemKind::Function(self.function(exported)?),
+            (_, "test") => {
                 self.bump();
                 let name_tok = self.expect(T::Str, "the test name, a string")?;
                 let name = self.decode_string(name_tok)?;
                 let body = self.block()?;
                 ItemKind::Test(Test { name, name_span: name_tok.span, body })
             }
-            T::Keyword(kw @ (Kw::Struct | Kw::Enum | Kw::Interface)) => {
+            (_, w @ ("struct" | "enum" | "interface")) => {
                 while !self.at(T::LBrace) && !self.at(T::Eof) {
                     self.bump();
                 }
                 self.skip_group()?;
                 ItemKind::Unsupported {
-                    what: match kw {
-                        Kw::Struct => "struct declarations",
-                        Kw::Enum => "enum declarations",
+                    what: match w {
+                        "struct" => "struct declarations",
+                        "enum" => "enum declarations",
                         _ => "interface declarations",
                     },
                 }
             }
-            T::Keyword(Kw::Type) => {
+            (_, "type") => {
                 self.skip_statement()?;
                 ItemKind::Unsupported { what: "type aliases" }
             }
-            T::Keyword(Kw::Import) => {
+            (_, "import") => {
                 self.skip_statement()?;
                 ItemKind::Unsupported { what: "imports" }
             }
-            T::Keyword(Kw::Const) => {
+            (T::Keyword(Kw::Const), _) => {
                 self.skip_statement()?;
                 ItemKind::Unsupported { what: "module constants" }
             }
-            T::LBrace if exported => {
+            (T::LBrace, _) if exported => {
                 self.skip_statement()?;
                 ItemKind::Unsupported { what: "re-exports" }
             }
-            T::Keyword(Kw::Let) => {
+            (T::Keyword(Kw::Let), _) => {
                 let t = self.tok(0);
                 return self.error(t.span, "a module's top level can't declare `let` variables; use `const`, or move it into a function");
             }
@@ -315,7 +389,7 @@ impl<'a> Parser<'a> {
         let mut params = Vec::new();
         while !self.at(T::RParen) {
             let start = self.tok(0).span;
-            let is_mut = self.eat_kw(Kw::Mut);
+            let is_mut = self.eat_mut();
             let name = if self.at_kw(Kw::This) {
                 let t = self.bump();
                 Ident { name: "this".into(), span: t.span }
@@ -332,7 +406,7 @@ impl<'a> Parser<'a> {
         }
         self.expect(T::RParen, "`)` or `,`")?;
         let ret = if self.eat(T::Colon) { Some(self.type_expr()?) } else { None };
-        let throws = if self.eat_kw(Kw::Throws) { Some(self.type_expr()?) } else { None };
+        let throws = if self.eat_word("throws") { Some(self.type_expr()?) } else { None };
         let body = self.block()?;
         Ok(Function { name, exported, params, ret, throws, body, generics })
     }
@@ -363,12 +437,12 @@ impl<'a> Parser<'a> {
     fn type_primary(&mut self) -> PResult<TypeExpr> {
         let t = self.tok(0);
         match t.kind {
-            T::Keyword(Kw::List | Kw::Set | Kw::Map) => {
+            T::Ident if matches!(self.text_of(t.span), "list" | "set" | "map") => {
                 self.bump();
                 let span = if self.at(T::Lt) { t.span.to(self.skip_group()?) } else { t.span };
                 Ok(TypeExpr { kind: TypeKind::Unsupported("collection types"), span })
             }
-            T::Ident | T::Keyword(Kw::Int | Kw::Float | Kw::String | Kw::Bool | Kw::Void | Kw::Never | Kw::Null) => {
+            T::Ident | T::Keyword(Kw::Null) => {
                 self.bump();
                 let mut span = t.span;
                 let mut name = self.text_of(t.span).to_string();
@@ -398,7 +472,7 @@ impl<'a> Parser<'a> {
                 let mut span = self.skip_group()?;
                 self.expect(T::Arrow, "`=>` in a function type")?;
                 span = span.to(self.type_postfix()?.span);
-                if self.eat_kw(Kw::Throws) {
+                if self.eat_word("throws") {
                     span = span.to(self.type_postfix()?.span);
                 }
                 Ok(TypeExpr { kind: TypeKind::Unsupported("function types"), span })
@@ -472,7 +546,7 @@ impl<'a> Parser<'a> {
                 StmtKind::Throw(value)
             }
             T::Keyword(Kw::Try) if self.peek_at(1) == T::LBrace => self.try_stmt()?,
-            T::Keyword(Kw::Match) => {
+            T::Ident if self.at_match() => {
                 // A `match` used as a statement ends with its `}`.
                 let e = self.expr()?;
                 self.eat(T::Semi);
@@ -580,11 +654,12 @@ impl<'a> Parser<'a> {
                 T::RParen | T::RBracket | T::RBrace if depth == 0 => break,
                 T::RParen | T::RBracket | T::RBrace => depth -= 1,
                 T::Semi | T::Eof => break,
-                T::Keyword(Kw::Of) if depth == 0 => {
+                // The `of` after the loop variable: in `for (const of of ofs)`, the first `of` is the variable.
+                T::Ident if depth == 0 && self.word_at(k, "of") && matches!(self.peek_at(k - 1), T::Ident | T::RBracket | T::RBrace) => {
                     is_of = true;
                     break;
                 }
-                T::Keyword(Kw::In) if depth == 0 && k == 3 => {
+                T::Ident if depth == 0 && k == 3 && self.word_at(k, "in") => {
                     let t = self.tok(k);
                     return self.error(t.span, "`for...in` isn't valid in dat; use `for...of`");
                 }
@@ -684,7 +759,7 @@ impl<'a> Parser<'a> {
             T::Le => (BinOp::Le, 5),
             T::Gt => (BinOp::Gt, 5),
             T::Ge => (BinOp::Ge, 5),
-            T::Keyword(Kw::In) => (BinOp::In, 5),
+            T::Ident if self.at_word("in") => (BinOp::In, 5),
             T::Plus => (BinOp::Add, 6),
             T::Minus => (BinOp::Sub, 6),
             T::Star => (BinOp::Mul, 7),
@@ -697,7 +772,7 @@ impl<'a> Parser<'a> {
     fn binary(&mut self, min_bp: u8) -> PResult<ExprId> {
         let mut lhs = self.unary()?;
         loop {
-            if (self.at_kw(Kw::Is) || self.at_kw(Kw::As)) && min_bp < 5 {
+            if (self.at_word("is") || self.at_word("as")) && min_bp < 5 {
                 self.bump();
                 self.eat(T::Question);
                 let ty = self.type_postfix()?;
@@ -774,7 +849,7 @@ impl<'a> Parser<'a> {
                     self.bump();
                     let mut args = Vec::new();
                     while !self.at(T::RParen) {
-                        let is_mut = self.eat_kw(Kw::Mut);
+                        let is_mut = self.eat_mut();
                         let expr = if self.at(T::Ellipsis) {
                             let s = self.bump().span;
                             let inner = self.expr()?;
@@ -847,6 +922,11 @@ impl<'a> Parser<'a> {
                 self.bump();
                 ExprKind::Unsupported { what: "`this`" }
             }
+            T::Ident if self.at_match() => {
+                self.bump();
+                let span = t.span.to(self.skip_group()?).to(self.skip_group()?);
+                return Ok(self.alloc_expr(ExprKind::Unsupported { what: "`match` expressions" }, span));
+            }
             T::Ident => {
                 self.bump();
                 let name = self.text_of(t.span).to_string();
@@ -888,22 +968,6 @@ impl<'a> Parser<'a> {
             T::LBrace => {
                 let span = self.skip_group()?;
                 return Ok(self.alloc_expr(ExprKind::Unsupported { what: "map literals" }, span));
-            }
-            T::Keyword(Kw::Match) => {
-                self.bump();
-                let mut span = t.span;
-                if self.at(T::LParen) {
-                    span = span.to(self.skip_group()?);
-                }
-                if self.at(T::LBrace) {
-                    span = span.to(self.skip_group()?);
-                }
-                return Ok(self.alloc_expr(ExprKind::Unsupported { what: "`match` expressions" }, span));
-            }
-            T::Keyword(Kw::Int | Kw::Float | Kw::String | Kw::Bool) => {
-                // `int.MAX` and similar.
-                self.bump();
-                ExprKind::Unsupported { what: "type members" }
             }
             T::Unknown => {
                 let text = self.text_of(t.span);
@@ -952,22 +1016,7 @@ impl<'a> Parser<'a> {
 
     /// At `(`: is this the parameter list of an arrow function?
     fn is_arrow_function(&self) -> bool {
-        let mut k = 0;
-        let mut depth = 0;
-        loop {
-            match self.peek_at(k) {
-                T::LParen | T::LBracket | T::LBrace => depth += 1,
-                T::RParen | T::RBracket | T::RBrace => {
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
-                }
-                T::Eof => return false,
-                _ => {}
-            }
-            k += 1;
-        }
+        let Some(k) = self.closing(0) else { return false };
         match self.peek_at(k + 1) {
             T::Arrow => true,
             // `(x: int): int => ...`

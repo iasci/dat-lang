@@ -10,5 +10,6 @@
 - Spec: `reference/` is the language reference
 - Error tolerance: every runtime error can be caught; never turn a failure into an uncatchable crash.
 - Don't remove or replace a feature the user designed without asking first.
+- Reserved keywords: keep the list as short as possible, and add one only with the owner's approval. Every new keyword breaks programs that use the word as a name. Prefer a built-in, a standard library module, or a word recognized only where it's used, such as `await` before a call, so the word stays free as a name.
 - Outside libraries: use one only if it's secure, adds no significant performance cost and fits our needs as it is; if it would need workarounds, fork it or write our own.
 - TypeScript: only the syntax is inspired by it. Decide semantics, errors and fixes by dat's own goals, never by what TypeScript does.

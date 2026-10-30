@@ -85,6 +85,12 @@ const parse: (text: string) => int throws ParseError = parsePort;
 - `interface`: see [Interfaces](./15-interfaces.md)
 - `type Name = ...;` gives another name to an existing type. An alias is the same type, not a new one: `type UserId = int;`
 
+A user-defined type can't take the name of a built-in type. Built-in type names aren't [reserved](./13-reserved-keywords.md), so a variable, parameter or function can use one, as in `const map = ...`, but in a type, `string` always means the built-in `string`:
+
+```
+struct string { text: string; }   // ❌ E0104: `string` is a built-in type, so a new type can't take its name
+```
+
 ## Literals
 
 ```

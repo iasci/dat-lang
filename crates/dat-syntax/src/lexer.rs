@@ -80,7 +80,9 @@ impl TokenKind {
 
 macro_rules! keywords {
     ($($variant:ident = $text:literal),* $(,)?) => {
-        /// The reserved keywords of `reference/13-reserved-keywords.md`.
+        /// The reserved keywords of `reference/13-reserved-keywords.md`. Every other
+        /// word, such as `type` or `match`, is an identifier, and the parser
+        /// gives it its meaning where it appears.
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         pub enum Kw { $($variant),* }
 
@@ -97,16 +99,10 @@ macro_rules! keywords {
 }
 
 keywords! {
-    Int = "int", Float = "float", String = "string", Bool = "bool", Null = "null",
-    Void = "void", Never = "never", List = "list", Set = "set", Map = "map",
-    True = "true", False = "false", Let = "let", Const = "const", Mut = "mut",
-    Function = "function", Return = "return", If = "if", Else = "else", For = "for",
-    Of = "of", While = "while", Break = "break", Continue = "continue", Match = "match",
-    Struct = "struct", Enum = "enum", Interface = "interface", Type = "type",
-    Implements = "implements", Extends = "extends", Static = "static", Private = "private",
-    This = "this", Throw = "throw", Throws = "throws", Try = "try", Catch = "catch",
-    Finally = "finally", Operator = "operator", As = "as", Is = "is", In = "in",
-    Import = "import", Export = "export", From = "from", Test = "test",
+    Let = "let", Const = "const", Function = "function", Return = "return",
+    If = "if", Else = "else", For = "for", While = "while", Break = "break", Continue = "continue",
+    Try = "try", Throw = "throw", Catch = "catch", Finally = "finally",
+    This = "this", True = "true", False = "false", Null = "null",
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

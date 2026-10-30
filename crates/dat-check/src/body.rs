@@ -39,6 +39,11 @@ fn meet(a: Ty, b: Ty, default: Ty) -> Ty {
     }
 }
 
+/// A built-in type whose members are written on its name, as in `int.MAX`.
+fn is_type_name(n: &str) -> bool {
+    matches!(n, "int" | "float" | "string" | "bool")
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum VarKind {
     Let,
@@ -912,6 +917,14 @@ impl<'m, 'a> Body<'m, 'a> {
                     self.unsupported(span, "`Math` functions");
                     return poison();
                 }
+                if let ExprKind::Name(n) = &ast.expr(*base).kind
+                    && is_type_name(n)
+                    && self.lookup(n).is_none()
+                {
+                    // `int.MAX` and similar, unless a variable has the type's name.
+                    self.unsupported(span, "type members");
+                    return poison();
+                }
                 let b = self.expr(*base);
                 match (b.ty, name.name.as_str()) {
                     (Ty::Error(_), "message") => mk(ir::ExprKind::ErrorMessage(Box::new(b.e)), Ty::Str),
@@ -1304,6 +1317,13 @@ impl<'m, 'a> Body<'m, 'a> {
                     && n == "Math"
                 {
                     self.unsupported(span, "`Math` functions");
+                    return poison();
+                }
+                if let ExprKind::Name(n) = &ast.expr(*base).kind
+                    && is_type_name(n)
+                    && self.lookup(n).is_none()
+                {
+                    self.unsupported(span, "type members");
                     return poison();
                 }
                 self.unsupported(span, "methods");
