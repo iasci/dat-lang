@@ -1,0 +1,25 @@
+// Appending to a string variable, `s += x` or `s = s + ...`, changes it in
+// place in both modes, with the results of joining a new string.
+function boom(): string {
+  throw RangeError { message: "boom" };
+}
+
+function main(): void {
+  let s = "a";
+  s += s;
+  s = s + "-" + s;
+  print(s);
+  const t = s;
+  s += "!";
+  print(s, t);
+  try {
+    s += "lost" + boom();
+  } catch (e: RangeError) {
+    print(s);
+  }
+  let n = "";
+  for (let i = 0; i < 5; i++) {
+    n += `${i}` + ",";
+  }
+  print(n);
+}

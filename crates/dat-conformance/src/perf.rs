@@ -10,9 +10,10 @@
 //!
 //! `fib(35)` is the worst case for compiled calls: it does nothing per call
 //! but call itself, so the stack check's own cost there is shown, not
-//! judged. Two more recursive programs in `bench/` are timed against
-//! hand-written Rust and shown too, so a change tuned to `fib` shows what
-//! it does to other shapes.
+//! judged. More programs in `bench/` are timed and shown too, so a change
+//! tuned to `fib` shows what it does elsewhere: two other recursive shapes,
+//! and everyday code, a loop (`primes`) and string building (`rows`),
+//! compiled against hand-written Rust and interpreted against CPython.
 
 use crate::Opts;
 use crate::run::dat_binary;
@@ -169,8 +170,14 @@ pub fn run(opts: &Opts) -> bool {
         }
     }
 
-    println!("other recursion, shown but not judged");
-    for (name, what) in [("ack", "generated ack(3, 10) vs hand-written Rust"), ("mutual", "generated mutual recursion vs hand-written")] {
+    println!("other programs, shown but not judged");
+    let others = [
+        ("ack", "generated ack(3, 10) vs hand-written Rust"),
+        ("mutual", "generated mutual recursion vs hand-written"),
+        ("primes", "generated primes loop vs hand-written"),
+        ("rows", "generated string rows vs hand-written"),
+    ];
+    for (name, what) in others {
         let (hand, ours) = (out.join(format!("{name}_hand")), out.join(format!("{name}_dat")));
         let built = rustc(&bench.join(format!("{name}.rs")), &hand)
             && run_in(&bench, &["build", &format!("{name}.dat"), "-o"]).arg(&ours).status().is_ok_and(|s| s.success());
@@ -192,6 +199,13 @@ pub fn run(opts: &Opts) -> bool {
         let t = time_interleaved(&mut [&mut ours, &mut cpython], 10).unwrap();
         let (ours, cpython) = (t[0], t[1]);
         g.ratio("interpreted fib(30) vs CPython", ours, cpython, "CPython", 2.0);
+        for (name, what) in [("primes", "interpreted primes loop vs CPython"), ("rows", "interpreted string rows vs CPython")] {
+            let mut ours = run_in(&bench, &["run", &format!("{name}.dat")]);
+            let mut cpython = Command::new("python3");
+            cpython.arg(bench.join(format!("{name}.py")));
+            let t = time_interleaved(&mut [&mut ours, &mut cpython], 10).unwrap();
+            shown(what, t[0], t[1], "CPython");
+        }
     } else {
         println!("  python3 not found; skipping the CPython gate");
     }

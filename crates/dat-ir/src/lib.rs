@@ -189,6 +189,37 @@ pub struct Expr {
     pub ty: Type,
 }
 
+impl Expr {
+    /// The parts of a string join, with joins inside it opened up, in
+    /// order: `a + (b + c)` gives `a`, `b` and `c`. Anything else is one part.
+    pub fn joined_parts(&self) -> Vec<&Expr> {
+        fn parts<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
+            match &e.kind {
+                ExprKind::Concat(ps) => ps.iter().for_each(|p| parts(p, out)),
+                _ => out.push(e),
+            }
+        }
+        let mut all = Vec::new();
+        parts(self, &mut all);
+        all
+    }
+
+    /// For `s = s + a + b` and `s += a + b`: the parts joined after `s`,
+    /// here `a` and `b`, if this expression is `s` joined with more parts.
+    /// Both backends append them in place, so building a string in a loop
+    /// stays linear.
+    pub fn appended_to(&self, s: LocalId) -> Option<Vec<&Expr>> {
+        if !matches!(self.kind, ExprKind::Concat(_)) {
+            return None;
+        }
+        let mut all = self.joined_parts();
+        match all[0].kind {
+            ExprKind::Local(first) if first == s && all.len() > 1 => Some(all.split_off(1)),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IntOp {
     Add,

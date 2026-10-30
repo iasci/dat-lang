@@ -28,7 +28,7 @@ pub use fmt::{bool_to_str, debug_bool, debug_int, debug_str, int_to_str};
 pub use output::{capture_begin, capture_end, flush_stdout, print, print_raw, print_str};
 pub use run::{exit_with, report_uncaught, run_main, run_on_dat_thread};
 pub use stack::{STACK_SIZE, StackLimit, stack_check, stack_is_low};
-pub use str::Str;
+pub use str::{Join, Str};
 pub use throw::{ALL_ERRORS, assert_failed, catch, fail, rethrow, throw, throw_at, throw_error, throw_new};
 pub use trace::{Entry, Loc, Site, Trace, TraceFrame};
 

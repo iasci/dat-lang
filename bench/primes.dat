@@ -1,0 +1,24 @@
+// Shown by `dat-conformance perf`, not judged: everyday loop code, counting
+// primes by trial division. Against bench/primes.rs compiled and
+// bench/primes.py interpreted.
+function isPrime(n: int): bool {
+  if (n < 2) {
+    return false;
+  }
+  for (let d = 2; d * d <= n; d++) {
+    if (n % d == 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function main(): void {
+  let count = 0;
+  for (let n = 0; n < 150_000; n++) {
+    if (isPrime(n)) {
+      count++;
+    }
+  }
+  print(count);
+}

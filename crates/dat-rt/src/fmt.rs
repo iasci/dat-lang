@@ -4,11 +4,23 @@
 use crate::Str;
 
 pub fn int_to_str(n: i64) -> Str {
-    Str::from_string(n.to_string())
+    let mut s = String::new();
+    write_int(&mut s, n);
+    Str::from_string(s)
+}
+
+/// The text of an `int`, for `toString()` and for `${n}` in a template.
+pub(crate) fn write_int(out: &mut String, n: i64) {
+    use std::fmt::Write as _;
+    let _ = write!(out, "{n}");
 }
 
 pub fn bool_to_str(b: bool) -> Str {
-    Str::new(if b { "true" } else { "false" })
+    Str::new(bool_text(b))
+}
+
+pub(crate) fn bool_text(b: bool) -> &'static str {
+    if b { "true" } else { "false" }
 }
 
 pub fn debug_int(n: i64) -> String {

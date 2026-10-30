@@ -38,7 +38,7 @@ error types, `print`, `assert`, `fail`, template strings, `toString()` and
 
 ```
 src.dat -> dat-syntax -> dat-check -> dat-ir -+-> dat-interp ----------> dat-rt
-           lexer,        names,       typed   |   walks the IR           runtime
+           lexer,        names,       typed   |   IR to closures         runtime
            parser,       types,       IR      +-> dat-codegen -> rustc -> dat-rt
            arena AST     lowering                  emits Rust
            (dat-diag: the diagnostic record, its terminal and JSON forms)
@@ -51,7 +51,7 @@ src.dat -> dat-syntax -> dat-check -> dat-ir -+-> dat-interp ----------> dat-rt
 | `dat-check` | Name resolution, block scope, types and lowering to the IR in one pass per body; one diagnostic per root cause, each with a fix where one is certain. [`CODES.md`](crates/dat-check/CODES.md) lists the codes. |
 | `dat-ir` | The typed IR both backends read: slot-indexed locals, checked integer operations with locations, structured control flow and try/catch regions. Evaluation order is the tree order. |
 | `dat-rt` | Every observable operation, once: checked arithmetic and its messages, error values, `print`, `toString`, `assert` rendering, the uncaught-error printer, the test reporter and the stack guard. |
-| `dat-interp` | Walks the IR, calling dat-rt. Errors propagate as `Result`. |
+| `dat-interp` | Compiles each function's IR to closures once, then runs them, calling dat-rt. Errors propagate as `Result`. |
 | `dat-codegen` | Emits one Rust function per dat function and builds it with Cargo against dat-rt, with the toolchain pinned. Runtime errors unwind. |
 | `dat` | The command line. |
 | `dat-conformance` | Runs the examples and the spec's code blocks in both modes and compares them. |
@@ -90,8 +90,8 @@ Deep recursion throws a catchable `StackOverflowError`. dat code runs on a
 thread dat-rt creates with a known stack (32 MiB compiled, 512 MiB in the
 interpreter), and recursive functions compare the stack pointer with a limit
 before their first call. Every program can nest at least 10,000 calls;
-measured, the interpreter goes past 160,000, and compiled code past two
-million simple calls and 128,000 of the largest kind measured.
+measured, the interpreter goes past a million simple calls and 400,000 of
+the largest kind measured, and compiled code past two million and 128,000.
 
 ## Testing
 
@@ -124,8 +124,9 @@ target/release/dat-conformance perf               # latency budgets and speed ga
   `dat test fib.dat` ≤ 20 ms, `dat run hello.dat` ≤ 5 ms), the compiled-path
   budget, compiled `fib(35)` against hand-written Rust, and interpreted
   `fib(30)` against CPython. Shown but not judged: the stack guard's cost on
-  `fib(35)`, the worst case, and Ackermann and mutual recursion against
-  hand-written Rust. Limits are judged on the reference machine named in the M0 report;
+  `fib(35)`, the worst case; Ackermann, mutual recursion, a loop (`primes`)
+  and string building (`rows`) against hand-written Rust; and the loop and
+  string building interpreted against CPython. Limits are judged on the reference machine named in the M0 report;
   `--shared-runner`, used in CI, fails only at twice a limit.
 
 Generated crates live in `target/dat-cache` (override with `DAT_CACHE_DIR`).

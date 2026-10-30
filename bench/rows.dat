@@ -1,0 +1,20 @@
+// Shown by `dat-conformance perf`, not judged: everyday string code, building
+// text rows with templates, comparing them and appending them to one string.
+// Against bench/rows.rs compiled and bench/rows.py interpreted.
+function row(i: int): string {
+  return `${i},item${i % 100},${i * 3}`;
+}
+
+function main(): void {
+  let out = "";
+  let small = 0;
+  for (let i = 0; i < 200_000; i++) {
+    const r = row(i);
+    if (r < "5") {
+      small++;
+    }
+    out += r + "\n";
+  }
+  print(small);
+  print(out == "" ? "empty" : "built");
+}

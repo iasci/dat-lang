@@ -128,6 +128,11 @@ fn rust_type(t: Type) -> &'static str {
     }
 }
 
+/// A first guess at a join's length, so most joins allocate once.
+fn join_capacity(parts: &[&ir::Expr]) -> usize {
+    parts.iter().map(|p| if let ExprKind::Str(text) = &p.kind { text.len() } else { 16 }).sum()
+}
+
 fn is_copy(t: Type) -> bool {
     matches!(t, Type::Int | Type::Bool | Type::Void)
 }
@@ -258,10 +263,13 @@ impl<'p> Gen<'p> {
                 let v = self.expr(f, e);
                 let _ = writeln!(out, "{ind}let {m}{}: {} = {v};", self.local(f, *l), rust_type(local.ty));
             }
-            Stmt::Set(l, e) => {
-                let v = self.expr(f, e);
-                let _ = writeln!(out, "{ind}{} = {v};", self.local(f, *l));
-            }
+            Stmt::Set(l, e) => match e.appended_to(*l) {
+                Some(parts) => self.append(f, *l, &parts, &ind, out),
+                None => {
+                    let v = self.expr(f, e);
+                    let _ = writeln!(out, "{ind}{} = {v};", self.local(f, *l));
+                }
+            },
             Stmt::Expr(e) => {
                 // A discarded value: `let _ =` keeps rustc's unused-value lints quiet.
                 let v = self.expr(f, e);
@@ -433,6 +441,40 @@ impl<'p> Gen<'p> {
         let _ = writeln!(out, "{ind}}}");
     }
 
+    /// `s = s + ...` and `s += ...`, which append in place. Parts that can
+    /// throw run first, in order, so a throw leaves `s` as it was; literals
+    /// and other locals are read when appended, which changes nothing, since
+    /// no expression can assign a local.
+    fn append(&mut self, f: &ir::Function, s: ir::LocalId, parts: &[&ir::Expr], ind: &str, out: &mut String) {
+        let mut pushes = Vec::new();
+        let _ = writeln!(out, "{ind}{{");
+        for (i, p) in parts.iter().enumerate() {
+            match &p.kind {
+                ExprKind::Str(text) => pushes.push(format!("{text:?}")),
+                ExprKind::Local(l) if *l != s => pushes.push(format!("{}.as_str()", self.local(f, *l))),
+                _ => {
+                    let v = self.expr(f, p);
+                    let _ = writeln!(out, "{ind}    let __part{i} = {v};");
+                    pushes.push(format!("__part{i}.as_str()"));
+                }
+            }
+        }
+        let s = self.local(f, s);
+        for p in pushes {
+            let _ = writeln!(out, "{ind}    {s}.push_str({p});");
+        }
+        let _ = writeln!(out, "{ind}}}");
+    }
+
+    /// A string expression as a `&str`, borrowing literals and locals.
+    fn str_ref(&mut self, f: &ir::Function, e: &ir::Expr) -> String {
+        match &e.kind {
+            ExprKind::Str(text) => format!("{text:?}"),
+            ExprKind::Local(l) => format!("{}.as_str()", self.local(f, *l)),
+            _ => format!("{}.as_str()", self.expr(f, e)),
+        }
+    }
+
     fn expr(&mut self, f: &ir::Function, e: &ir::Expr) -> String {
         match &e.kind {
             ExprKind::Int(n) if *n < 0 => format!("({n}i64)"),
@@ -464,6 +506,10 @@ impl<'p> Gen<'p> {
                 let (m, l) = self.site(*loc);
                 format!("{m}dat_rt::int::neg({a}, {l})")
             }
+            ExprKind::Compare { op, lhs, rhs } if lhs.ty == Type::Str => {
+                let (a, b) = (self.str_ref(f, lhs), self.str_ref(f, rhs));
+                format!("({a} {} {b})", op.symbol())
+            }
             ExprKind::Compare { op, lhs, rhs } => {
                 let (a, b) = (self.expr(f, lhs), self.expr(f, rhs));
                 format!("({a} {} {b})", op.symbol())
@@ -474,9 +520,18 @@ impl<'p> Gen<'p> {
             ExprKind::Cond { cond, then, els } => {
                 format!("(if {} {{ {} }} else {{ {} }})", self.expr(f, cond), self.expr(f, then), self.expr(f, els))
             }
-            ExprKind::Concat(parts) => {
-                let parts: Vec<String> = parts.iter().map(|p| format!("{}.as_str()", self.expr(f, p))).collect();
-                format!("dat_rt::Str::concat(&[{}])", parts.join(", "))
+            ExprKind::Concat(_) => {
+                let parts = e.joined_parts();
+                let mut s = format!("{{ let mut __j = dat_rt::Join::with_capacity({}); ", join_capacity(&parts));
+                for p in parts {
+                    let _ = match &p.kind {
+                        ExprKind::ToStr(a) if a.ty == Type::Int => write!(s, "__j.push_int({}); ", self.expr(f, a)),
+                        ExprKind::ToStr(a) if a.ty == Type::Bool => write!(s, "__j.push_bool({}); ", self.expr(f, a)),
+                        _ => write!(s, "__j.push_str({}); ", self.str_ref(f, p)),
+                    };
+                }
+                s.push_str("__j.finish() }");
+                s
             }
             ExprKind::ToStr(a) => {
                 let v = self.expr(f, a);
