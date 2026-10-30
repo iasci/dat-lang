@@ -2,3 +2,4 @@
 # starts passing is reported, so the list only shrinks.
 22-concurrency.md:212#E2205@213 the compiler doesn't recognize `await` yet
 22-concurrency.md:212#E2206@215 the compiler doesn't recognize `async` yet, and the spec runner doesn't treat `async function` as a declaration
+03-operators.md:68#E0305@70 the checker doesn't report statements with no effect yet (M1)

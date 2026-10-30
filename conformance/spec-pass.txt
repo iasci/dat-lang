@@ -14,10 +14,11 @@
 03-operators.md:43#ok
 03-operators.md:43#E0301@45
 03-operators.md:55#ok
-03-operators.md:70#ok
-03-operators.md:70#E0303@75
-03-operators.md:70#E0304@77
-03-operators.md:150#ok
+03-operators.md:68#ok
+03-operators.md:80#ok
+03-operators.md:80#E0303@85
+03-operators.md:80#E0304@87
+03-operators.md:160#ok
 06-functions.md:7#ok
 06-functions.md:23#ok
 06-functions.md:23#E0652@26

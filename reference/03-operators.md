@@ -63,6 +63,16 @@ total /= 4;      // ❌ E0302: total is an int, but `total / 4` is a float
 
 Assignments are statements, not expressions, so `if (x = 1)` and `a = b = 0` are errors.
 
+A statement has to do something. One that's only a value with no call in it, such as `x;` or `a + b;`, is an error; often it's `==` written for `=`. A call can drop its result, as in `save(user);`.
+
+```
+let total = 0;
+total == 5;   // ❌ E0305: `total == 5` has no effect
+              //    fix (review): total = 5;
+```
+
+For any other statement with no effect, the fix removes it.
+
 ## Increment and Decrement
 
 `++` and `--` add or subtract `1` from an `int` variable. They are postfix statements, not expressions.
