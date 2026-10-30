@@ -1,6 +1,6 @@
 # M1 status: the core language
 
-**M1 is built, and 12 of its 13 exit criteria pass on the reference machine. The 13th, CI on Linux and macOS, runs when the branch is pushed.** dat now has floats, the methods of numbers and strings, the `@dat/math` module with imports from `@dat/...`, default parameter values, every syntax error in one run, and the M1 rules for literals and statements. Compiled float code runs at 1.01–1.03× hand-written Rust, inside the 4% aim. Interpreted, it runs at 0.79–0.81× CPython. A probe of about 230 programs in both modes found one difference between them and seven checker and parser bugs, all fixed (see [The probe](#the-probe)). Everything is built from the [M1 plan](./M1%20plan.md), on top of M0. It adds about 2,200 lines of Rust, for about 13,100 in all, and no outside dependency.
+**M1 is built, and all 13 of its exit criteria pass: 12 on the reference machine, and CI on Linux and macOS.** dat now has floats, the methods of numbers and strings, the `@dat/math` module with imports from `@dat/...`, default parameter values, every syntax error in one run, and the M1 rules for literals and statements. Compiled float code runs at 1.01–1.03× hand-written Rust, inside the 4% aim. Interpreted, it runs at 0.79–0.81× CPython. A probe of about 230 programs in both modes found one difference between them and seven checker and parser bugs, all fixed (see [The probe](#the-probe)). Everything is built from the [M1 plan](./M1%20plan.md), on top of M0. It adds about 2,200 lines of Rust, for about 13,100 in all, and no outside dependency.
 
 Measurements come from the reference machine named in the [M0 report](./M0%20status.md): an 8-vCPU Intel Xeon at 2.2 GHz (a shared GCP VM), Linux 7.0, rustc 1.99.0. Times are the median of 20 runs after 3 warmups (40 for the compiled comparisons), wall time including process start, with the programs compared run interleaved.
 
@@ -20,7 +20,7 @@ Measurements come from the reference machine named in the [M0 report](./M0%20sta
 | 10 | Spec ratchet | **pass** | 76 of 272 cases pass in both modes, up from 64, with no regression. Two §01 and §06 blocks moved when the new ❌ examples were added; every case that passed before passes at its new line. The cases still blocked need a later milestone: lists, nullable types, imports of files, or `@dat/tasks`. |
 | 11 | Exit check | **pass** | `examples/numbers/exit_check.dat` is the roadmap's test, and passes in both modes. |
 | 12 | Speed | **pass** | Float code (`bench/floats.dat`, the Mandelbrot set on a 400×400 grid): 26.8 ms against 26.1 ms hand-written, 1.03×, against a gate of 1.04×. Three runs on the same day, with byte-identical generated code, gave 1.01×, 1.02× and 1.03×, so the margin on this shared VM is thin. M0's gates and budgets still pass; see [Speed](#speed). |
-| 13 | CI | **not run yet** | `.github/workflows/ci.yml` is unchanged and runs everything above on Linux and macOS. It runs when the branch is pushed. Locally, `cargo fmt --check` and `cargo clippy --all-targets -D warnings` are clean and the unit tests pass. |
+| 13 | CI | **pass** | `.github/workflows/ci.yml`, unchanged, ran everything above on Linux and macOS for the `m1` branch, and the speed job on Linux, whose limits are doubled on a shared runner. All three jobs passed. |
 
 ## How to check it
 
@@ -116,10 +116,6 @@ These are implementation choices. The ones that state behaviour the spec didn't 
 - **A literal that isn't a number** (`0x`, `0b2`, `0xfg`) is a syntax error that says which digit is wrong, not E0150. An unclosed comment or template string is reported at its start, without quoting the rest of the file, and a UTF-8 byte order mark at the start of a file is skipped.
 - **An integer literal in every branch of `?:`** is a float where one is expected: `const ratio: float = ready ? 1 : 2;`. So is `-(3)`, like `-3`.
 - **The spec runner** now reads `expr // throws RangeError: message` on a bare expression line and float expected values (`10 / 4 // 2.5`). When a case's safe fix leads to something a later milestone implements, such as `@dat/tasks`, the case counts as unsupported rather than failing.
-
-## For the owner
-
-- **E0305's removal fix** is `review`. Making it `safe` would let `dat fix` delete such statements without a look.
 
 ## What M2 builds on
 
