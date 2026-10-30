@@ -14,10 +14,10 @@ error[E0002]: not supported yet: lists
 9 |   const xs = [1, 2, 3];
   |              ^^^^^^^^^
 
-error[E0002]: not supported yet: floats
-  --> unsupported.dat:10:17
-10 |   const ratio = 0.5;
-   |                 ^^^
+error[E0002]: not supported yet: union types
+  --> unsupported.dat:10:11
+10 |   let id: int | string = 42;
+   |           ^^^^^^^^^^^^
 
 error[E0002]: not supported yet: for...of loops
   --> unsupported.dat:11:3
@@ -38,10 +38,10 @@ error[E0002]: not supported yet: lists
 9 |   const xs = [1, 2, 3];
   |              ^^^^^^^^^
 
-error[E0002]: not supported yet: floats
-  --> unsupported.dat:10:17
-10 |   const ratio = 0.5;
-   |                 ^^^
+error[E0002]: not supported yet: union types
+  --> unsupported.dat:10:11
+10 |   let id: int | string = 42;
+   |           ^^^^^^^^^^^^
 
 error[E0002]: not supported yet: for...of loops
   --> unsupported.dat:11:3

@@ -1,0 +1,13 @@
+// A failed comparison of floats shows both sides as floats print.
+
+test "sum" {
+  let sum = 0.0;
+  for (let i = 0; i < 3; i++) {
+    sum += 0.1;
+  }
+  assert(sum == 0.3);
+}
+
+test "int and float" {
+  assert(7 / 2 == 3);
+}

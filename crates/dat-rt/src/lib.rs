@@ -1,5 +1,6 @@
 //! The dat runtime. Every operation whose result a program can observe lives
-//! here once: checked integer arithmetic, error values and their messages,
+//! here once: checked integer arithmetic, the methods of numbers and strings,
+//! number printing, error values and their messages,
 //! `print`, `toString`, `assert` rendering, the uncaught-error printer, the test
 //! reporter and the stack guard. The interpreter calls it, and generated Rust
 //! links it, so the two run modes can differ only in how they step through the
@@ -15,16 +16,18 @@
 mod error;
 mod fmt;
 pub mod int;
+pub mod num;
 mod output;
 mod run;
 mod stack;
 mod str;
 pub mod testing;
+pub mod text;
 mod throw;
 mod trace;
 
 pub use error::{AssertInfo, DatError, ErrorKind};
-pub use fmt::{bool_to_str, debug_bool, debug_int, debug_str, int_to_str};
+pub use fmt::{bool_to_str, debug_bool, debug_float, debug_int, debug_str, float_to_str, int_to_str};
 pub use output::{capture_begin, capture_end, flush_stdout, print, print_raw, print_str};
 pub use run::{exit_with, report_uncaught, run_main, run_on_dat_thread};
 pub use stack::{STACK_SIZE, StackLimit, stack_check, stack_is_low};

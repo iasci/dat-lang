@@ -1,0 +1,166 @@
+# Golden results for methods.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0851]: string has no method `toUppercase`
+ --> methods.dat:5:11
+5 |   print(s.toUppercase(), s.length(), s.size, 5.foo());
+  |           ^^^^^^^^^^^
+fix (review): use `toUpperCase`
+5 |   print(s.toUpperCase(), s.length(), s.size, 5.foo());
+
+error[E0851]: string has no method `length`
+ --> methods.dat:5:28
+5 |   print(s.toUppercase(), s.length(), s.size, 5.foo());
+  |                            ^^^^^^ `length` is a field, not a method
+fix: read the field
+5 |   print(s.toUppercase(), s.length, s.size, 5.foo());
+
+error[E0851]: string has no field `size`
+ --> methods.dat:5:40
+5 |   print(s.toUppercase(), s.length(), s.size, 5.foo());
+  |                                        ^^^^
+
+error[E0851]: int has no method `foo`
+ --> methods.dat:5:48
+5 |   print(s.toUppercase(), s.length(), s.size, 5.foo());
+  |                                                ^^^
+
+error[E0002]: not supported yet: `split`, which returns a list
+ --> methods.dat:6:9
+6 |   print(s.split(","), "8080".toInt(), s.trim);
+  |         ^^^^^^^^^^^^
+
+error[E0002]: not supported yet: declared errors (`toInt` and `toFloat` on a string throw `ValueError`)
+ --> methods.dat:6:23
+6 |   print(s.split(","), "8080".toInt(), s.trim);
+  |                       ^^^^^^^^^^^^^^
+
+error[E0002]: not supported yet: methods as values; call it with `()`
+ --> methods.dat:6:39
+6 |   print(s.split(","), "8080".toInt(), s.trim);
+  |                                       ^^^^^^
+
+error[E0250]: expected an int, found a string
+ --> methods.dat:7:20
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
+  |                    ^^^ this is a string
+
+error[E0650]: `slice` takes 1 or 2 arguments, but 0 were given
+ --> methods.dat:7:26
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
+  |                          ^^^^^^^^^^^
+
+error[E0650]: `padStart` takes 1 or 2 arguments, but 3 were given
+ --> methods.dat:7:39
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
+  |                                       ^^^^^^^^^^^^^^^^^^^^^
+
+error[E0250]: expected an int, found a float
+ --> methods.dat:7:68
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
+  |                                                                    ^^^ this is a float
+option: round it down
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5.floor()));
+option: round it to the nearest int
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5.round()));
+
+error[E0350]: an int can't be indexed
+ --> methods.dat:8:9
+8 |   print(5[0], int.MAX);
+  |         ^^^^
+
+error[E0002]: not supported yet: type members
+ --> methods.dat:8:15
+8 |   print(5[0], int.MAX);
+  |               ^^^^^^^
+
+error[E0350]: a string's characters can't be assigned
+ --> methods.dat:9:3
+9 |   s[0] = "T";
+  |   ^^^^ strings are immutable; build a new one, for example with `slice` and `+`
+14 errors, 1 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0851]: string has no method `toUppercase`
+ --> methods.dat:5:11
+5 |   print(s.toUppercase(), s.length(), s.size, 5.foo());
+  |           ^^^^^^^^^^^
+fix (review): use `toUpperCase`
+5 |   print(s.toUpperCase(), s.length(), s.size, 5.foo());
+
+error[E0851]: string has no method `length`
+ --> methods.dat:5:28
+5 |   print(s.toUppercase(), s.length(), s.size, 5.foo());
+  |                            ^^^^^^ `length` is a field, not a method
+fix: read the field
+5 |   print(s.toUppercase(), s.length, s.size, 5.foo());
+
+error[E0851]: string has no field `size`
+ --> methods.dat:5:40
+5 |   print(s.toUppercase(), s.length(), s.size, 5.foo());
+  |                                        ^^^^
+
+error[E0851]: int has no method `foo`
+ --> methods.dat:5:48
+5 |   print(s.toUppercase(), s.length(), s.size, 5.foo());
+  |                                                ^^^
+
+error[E0002]: not supported yet: `split`, which returns a list
+ --> methods.dat:6:9
+6 |   print(s.split(","), "8080".toInt(), s.trim);
+  |         ^^^^^^^^^^^^
+
+error[E0002]: not supported yet: declared errors (`toInt` and `toFloat` on a string throw `ValueError`)
+ --> methods.dat:6:23
+6 |   print(s.split(","), "8080".toInt(), s.trim);
+  |                       ^^^^^^^^^^^^^^
+
+error[E0002]: not supported yet: methods as values; call it with `()`
+ --> methods.dat:6:39
+6 |   print(s.split(","), "8080".toInt(), s.trim);
+  |                                       ^^^^^^
+
+error[E0250]: expected an int, found a string
+ --> methods.dat:7:20
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
+  |                    ^^^ this is a string
+
+error[E0650]: `slice` takes 1 or 2 arguments, but 0 were given
+ --> methods.dat:7:26
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
+  |                          ^^^^^^^^^^^
+
+error[E0650]: `padStart` takes 1 or 2 arguments, but 3 were given
+ --> methods.dat:7:39
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
+  |                                       ^^^^^^^^^^^^^^^^^^^^^
+
+error[E0250]: expected an int, found a float
+ --> methods.dat:7:68
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
+  |                                                                    ^^^ this is a float
+option: round it down
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5.floor()));
+option: round it to the nearest int
+7 |   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5.round()));
+
+error[E0350]: an int can't be indexed
+ --> methods.dat:8:9
+8 |   print(5[0], int.MAX);
+  |         ^^^^
+
+error[E0002]: not supported yet: type members
+ --> methods.dat:8:15
+8 |   print(5[0], int.MAX);
+  |               ^^^^^^^
+
+error[E0350]: a string's characters can't be assigned
+ --> methods.dat:9:3
+9 |   s[0] = "T";
+  |   ^^^^ strings are immutable; build a new one, for example with `slice` and `+`
+14 errors, 1 fixable with dat fix

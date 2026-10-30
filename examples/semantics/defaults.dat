@@ -1,0 +1,55 @@
+// Default values: worked out at each call that leaves the argument out,
+// with the parameters before them in scope (§06). Both modes trace an
+// error in a default to the function it belongs to.
+
+function stamp(label: string): int {
+  print(`  default for ${label}`);
+  return label.length;
+}
+
+function connect(host: string, port: int = 5432, label: string = `${host}:${port}`): string {
+  return `${label} (port ${port})`;
+}
+
+function span(start: int, end: int = start + stamp("end"), step: int = 1): int {
+  return (end - start) * step;
+}
+
+function ratio(x: float, scale: float = 2): float {
+  return x * scale;
+}
+
+function checked(n: int, limit: int = (100 / n.max(0)).floor()): int {
+  return limit;
+}
+
+function deep(n: int, d: int = deep(n + 1)): int {
+  return d;
+}
+
+function count(n: int, by: int = 1): int {
+  if (n <= 0) {
+    return 0;
+  }
+  return 1 + count(n - by);
+}
+
+function main(): void {
+  print(connect("localhost"));
+  print(connect("localhost", 6543));
+  print(connect("db", 1, "primary"));
+  print(span(10));
+  print(span(10, 12));
+  print(span(10, 12, 3));
+  print(ratio(1.5), ratio(1.5, 4));
+  print(count(5), count(6, 2));
+  print(checked(4), checked(4, 1));
+  // The default calls `deep` again before `deep` ever runs: the stack runs
+  // out in both modes, and that's catchable too.
+  try {
+    print(deep(1));
+  } catch (e) {
+    print("caught", e.toString());
+  }
+  print(checked(0));
+}

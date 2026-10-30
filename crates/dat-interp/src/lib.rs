@@ -13,9 +13,10 @@
 
 #![forbid(unsafe_code)]
 
-use dat_ir::{self as ir, CmpOp, ExprKind, IntOp, Stmt, Type};
+use dat_ir::{self as ir, Builtin, CmpOp, ExprKind, FloatOp, IntOp, Stmt, Type};
 use dat_rt::testing::TestInfo;
 use dat_rt::{DatError, ErrorKind, Join, Loc, Str, Trace};
+use dat_rt::{num, text};
 use std::cmp::Ordering;
 use std::convert::identity;
 use std::rc::Rc;
@@ -30,6 +31,7 @@ enum Value {
     #[default]
     Void,
     Int(i64),
+    Float(f64),
     Bool(bool),
     Str(Str),
     Error(Rc<DatError>),
@@ -41,6 +43,14 @@ impl Value {
         match self {
             Value::Int(n) => *n,
             _ => unreachable!("type checker guarantees an int"),
+        }
+    }
+
+    #[inline]
+    fn float(&self) -> f64 {
+        match self {
+            Value::Float(x) => *x,
+            _ => unreachable!("type checker guarantees a float"),
         }
     }
 
@@ -130,6 +140,9 @@ struct Func {
     at: Loc,
     locals: usize,
     body: Block,
+    params: usize,
+    /// The default values of the last parameters, which see the ones before them.
+    defaults: Box<[F<Value>]>,
 }
 
 impl Func {
@@ -138,6 +151,33 @@ impl Func {
     fn run(&self, c: &Code, m: &mut Machine, base: usize) -> R<Value> {
         m.stack.resize(base + self.locals, Value::Void);
         let result = run(&self.body, c, m, base);
+        self.finish(m, base, result)
+    }
+
+    /// Runs a call that gave the first `given` arguments: the defaults of
+    /// the others are worked out in this call's frame, so an error in one
+    /// is traced to this function.
+    fn run_defaulted(&self, c: &Code, m: &mut Machine, base: usize, given: usize) -> R<Value> {
+        m.stack.resize(base + self.locals, Value::Void);
+        let first = self.params - self.defaults.len();
+        let mut result = Ok(Flow::Normal);
+        for i in given..self.params {
+            match self.defaults[i - first](c, m, base) {
+                Ok(v) => m.stack[base + i] = v,
+                Err(e) => {
+                    result = Err(e);
+                    break;
+                }
+            }
+        }
+        if result.is_ok() {
+            result = run(&self.body, c, m, base);
+        }
+        self.finish(m, base, result)
+    }
+
+    #[inline]
+    fn finish(&self, m: &mut Machine, base: usize, result: R<Flow>) -> R<Value> {
         m.stack.truncate(base);
         match result {
             Ok(Flow::Return) => Ok(std::mem::take(&mut m.ret)),
@@ -185,7 +225,14 @@ impl Code {
             .iter()
             .map(|f| {
                 let cx = Compiler { file, func: leak(&f.name), fault_plus_one };
-                Func { name: cx.func, at: cx.loc(f.loc), locals: f.locals.len(), body: cx.block(&f.body) }
+                Func {
+                    name: cx.func,
+                    at: cx.loc(f.loc),
+                    locals: f.locals.len(),
+                    body: cx.block(&f.body),
+                    params: f.params as usize,
+                    defaults: f.defaults.iter().map(|d| cx.value(d)).collect(),
+                }
             })
             .collect();
         Code { file, funcs }
@@ -343,6 +390,7 @@ impl Compiler {
             }
             (ExprKind::Call { func, args, loc }, _) => self.call(*func, args, *loc, identity),
             (_, Type::Int) => self.int_to(e, Value::Int),
+            (_, Type::Float) => self.float_to(e, Value::Float),
             (_, Type::Bool) => self.bool_to(e, Value::Bool),
             (_, Type::Str) => {
                 let s = self.str(e);
@@ -393,6 +441,7 @@ impl Compiler {
     /// A call, whose result `out` converts.
     fn call<T: 'static>(&self, func: ir::FuncId, args: &[ir::Expr], loc: ir::Loc, out: impl Fn(Value) -> T + 'static) -> F<T> {
         let id = func.0 as usize;
+        let given = args.len();
         let args: Box<[F<Value>]> = args.iter().map(|a| self.value(a)).collect();
         let at = self.loc(loc);
         node(move |c, m, b| {
@@ -410,7 +459,9 @@ impl Compiler {
                     }
                 }
             }
-            match c.funcs[id].run(c, m, callee) {
+            let f = &c.funcs[id];
+            let result = if given < f.params { f.run_defaulted(c, m, callee, given) } else { f.run(c, m, callee) };
+            match result {
                 Ok(v) => Ok(out(v)),
                 Err(mut err) => {
                     // The error now leaves the caller's frame from this call.
@@ -473,6 +524,7 @@ impl Compiler {
             ExprKind::Call { func, args, loc } => self.call(*func, args, *loc, move |v| out(v.int())),
             ExprKind::Cond { cond, then, els } => self.cond(cond, self.int_to(then, out), self.int_to(els, out)),
             ExprKind::Diverge(a) => self.diverge(a),
+            ExprKind::Builtin { op, args, loc } => self.builtin_int(*op, args, self.loc(*loc), out),
             _ => unreachable!("not an int expression: {e:?}"),
         }
     }
@@ -515,6 +567,74 @@ impl Compiler {
         }
     }
 
+    fn float(&self, e: &ir::Expr) -> F<f64> {
+        self.float_to(e, identity)
+    }
+
+    /// A `float` expression, whose value `out` converts.
+    fn float_to<T: 'static, O: Fn(f64) -> T + Copy + 'static>(&self, e: &ir::Expr, out: O) -> F<T> {
+        match &e.kind {
+            ExprKind::Float(x) => {
+                let x = *x;
+                node(move |_, _, _| Ok(out(x)))
+            }
+            ExprKind::Local(l) => {
+                let l = l.0 as usize;
+                node(move |_, m, b| Ok(out(m.stack[b + l].float())))
+            }
+            ExprKind::FloatArith { op, lhs, rhs } => match op {
+                FloatOp::Add => self.float_arith(|x, y| x + y, lhs, rhs, out),
+                FloatOp::Sub => self.float_arith(|x, y| x - y, lhs, rhs, out),
+                FloatOp::Mul => self.float_arith(|x, y| x * y, lhs, rhs, out),
+                FloatOp::Div => self.float_arith(|x, y| x / y, lhs, rhs, out),
+                FloatOp::Rem => self.float_arith(|x, y| x % y, lhs, rhs, out),
+            },
+            ExprKind::FloatNeg(a) => {
+                let a = self.float(a);
+                node(move |c, m, b| Ok(out(-a(c, m, b)?)))
+            }
+            ExprKind::Call { func, args, loc } => self.call(*func, args, *loc, move |v| out(v.float())),
+            ExprKind::Cond { cond, then, els } => self.cond(cond, self.float_to(then, out), self.float_to(els, out)),
+            ExprKind::Diverge(a) => self.diverge(a),
+            ExprKind::Builtin { op, args, loc } => self.builtin_float(*op, args, self.loc(*loc), out),
+            _ => unreachable!("not a float expression: {e:?}"),
+        }
+    }
+
+    /// Float arithmetic with `op`, by the shape of its operands.
+    fn float_arith<T, O, A>(&self, op: A, lhs: &ir::Expr, rhs: &ir::Expr, out: O) -> F<T>
+    where
+        T: 'static,
+        O: Fn(f64) -> T + Copy + 'static,
+        A: Fn(f64, f64) -> f64 + Copy + 'static,
+    {
+        match (&lhs.kind, &rhs.kind) {
+            (ExprKind::Local(x), ExprKind::Float(k)) => {
+                let (x, k) = (x.0 as usize, *k);
+                node(move |_, m, b| Ok(out(op(m.stack[b + x].float(), k))))
+            }
+            (ExprKind::Local(x), ExprKind::Local(y)) => {
+                let (x, y) = (x.0 as usize, y.0 as usize);
+                node(move |_, m, b| Ok(out(op(m.stack[b + x].float(), m.stack[b + y].float()))))
+            }
+            (_, ExprKind::Float(k)) => {
+                let (lhs, k) = (self.float(lhs), *k);
+                node(move |c, m, b| Ok(out(op(lhs(c, m, b)?, k))))
+            }
+            (ExprKind::Float(k), _) => {
+                let (k, rhs) = (*k, self.float(rhs));
+                node(move |c, m, b| Ok(out(op(k, rhs(c, m, b)?))))
+            }
+            _ => {
+                let (lhs, rhs) = (self.float(lhs), self.float(rhs));
+                node(move |c, m, b| {
+                    let x = lhs(c, m, b)?;
+                    Ok(out(op(x, rhs(c, m, b)?)))
+                })
+            }
+        }
+    }
+
     fn bool(&self, e: &ir::Expr) -> F<bool> {
         self.bool_to(e, identity)
     }
@@ -530,8 +650,30 @@ impl Compiler {
                 let l = l.0 as usize;
                 node(move |_, m, b| Ok(out(m.stack[b + l].bool())))
             }
-            ExprKind::Compare { op, lhs, rhs } => match lhs.ty {
-                Type::Int => match op {
+            ExprKind::Compare { op, lhs, rhs } => match (lhs.ty, rhs.ty) {
+                (Type::Int, Type::Float) => {
+                    let (op, lhs, rhs) = (rt_cmp(*op), self.int(lhs), self.float(rhs));
+                    node(move |c, m, b| {
+                        let x = lhs(c, m, b)?;
+                        Ok(out(num::holds(op, num::cmp_int_float(x, rhs(c, m, b)?))))
+                    })
+                }
+                (Type::Float, Type::Int) => {
+                    let (op, lhs, rhs) = (rt_cmp(*op), self.float(lhs), self.int(rhs));
+                    node(move |c, m, b| {
+                        let x = lhs(c, m, b)?;
+                        Ok(out(num::holds(op, num::cmp_float_int(x, rhs(c, m, b)?))))
+                    })
+                }
+                (Type::Float, _) => match op {
+                    CmpOp::Lt => self.compare_floats(|x, y| x < y, lhs, rhs, out),
+                    CmpOp::Le => self.compare_floats(|x, y| x <= y, lhs, rhs, out),
+                    CmpOp::Gt => self.compare_floats(|x, y| x > y, lhs, rhs, out),
+                    CmpOp::Ge => self.compare_floats(|x, y| x >= y, lhs, rhs, out),
+                    CmpOp::Eq => self.compare_floats(|x, y| x == y, lhs, rhs, out),
+                    CmpOp::Ne => self.compare_floats(|x, y| x != y, lhs, rhs, out),
+                },
+                (Type::Int, _) => match op {
                     CmpOp::Lt => self.compare_ints(|x, y| x < y, lhs, rhs, out),
                     CmpOp::Le => self.compare_ints(|x, y| x <= y, lhs, rhs, out),
                     CmpOp::Gt => self.compare_ints(|x, y| x > y, lhs, rhs, out),
@@ -539,14 +681,14 @@ impl Compiler {
                     CmpOp::Eq => self.compare_ints(|x, y| x == y, lhs, rhs, out),
                     CmpOp::Ne => self.compare_ints(|x, y| x != y, lhs, rhs, out),
                 },
-                Type::Bool => {
+                (Type::Bool, _) => {
                     let (op, lhs, rhs) = (*op, self.bool(lhs), self.bool(rhs));
                     node(move |c, m, b| {
                         let x = lhs(c, m, b)?;
                         Ok(out(holds(op, x.cmp(&rhs(c, m, b)?))))
                     })
                 }
-                Type::Str => {
+                (Type::Str, _) => {
                     let (op, lhs, rhs) = (*op, self.str(lhs), self.str(rhs));
                     node(move |c, m, b| {
                         let x = lhs(c, m, b)?;
@@ -570,7 +712,119 @@ impl Compiler {
             ExprKind::Call { func, args, loc } => self.call(*func, args, *loc, move |v| out(v.bool())),
             ExprKind::Cond { cond, then, els } => self.cond(cond, self.bool_to(then, out), self.bool_to(els, out)),
             ExprKind::Diverge(a) => self.diverge(a),
+            ExprKind::Builtin { op, args, .. } => self.builtin_bool(*op, args, out),
             _ => unreachable!("not a bool expression: {e:?}"),
+        }
+    }
+
+    /// A `float` comparison with `p`, by the shape of its operands.
+    fn compare_floats<T, O, P>(&self, p: P, lhs: &ir::Expr, rhs: &ir::Expr, out: O) -> F<T>
+    where
+        T: 'static,
+        O: Fn(bool) -> T + Copy + 'static,
+        P: Fn(f64, f64) -> bool + Copy + 'static,
+    {
+        match (&lhs.kind, &rhs.kind) {
+            (ExprKind::Local(x), ExprKind::Float(k)) => {
+                let (x, k) = (x.0 as usize, *k);
+                node(move |_, m, b| Ok(out(p(m.stack[b + x].float(), k))))
+            }
+            (ExprKind::Local(x), ExprKind::Local(y)) => {
+                let (x, y) = (x.0 as usize, y.0 as usize);
+                node(move |_, m, b| Ok(out(p(m.stack[b + x].float(), m.stack[b + y].float()))))
+            }
+            _ => {
+                let (lhs, rhs) = (self.float(lhs), self.float(rhs));
+                node(move |c, m, b| {
+                    let x = lhs(c, m, b)?;
+                    Ok(out(p(x, rhs(c, m, b)?)))
+                })
+            }
+        }
+    }
+
+    /// The builtins that give an `int`.
+    fn builtin_int<T: 'static, O: Fn(i64) -> T + Copy + 'static>(&self, op: Builtin, args: &[ir::Expr], at: Loc, out: O) -> F<T> {
+        let i = |k: usize| self.int(&args[k]);
+        let f = |k: usize| self.float(&args[k]);
+        let s = |k: usize| self.str(&args[k]);
+        match op {
+            Builtin::IntAbs => op1(i(0), num::try_int_abs, at, out),
+            Builtin::IntMin => op2(i(0), i(1), |a, b| Ok(num::int_min(a, b)), at, out),
+            Builtin::IntMax => op2(i(0), i(1), |a, b| Ok(num::int_max(a, b)), at, out),
+            Builtin::IntPow => op2(i(0), i(1), num::try_int_pow, at, out),
+            Builtin::FloatToInt => op1(f(0), num::try_float_to_int, at, out),
+            Builtin::FloatFloor => op1(f(0), num::try_float_floor, at, out),
+            Builtin::FloatCeil => op1(f(0), num::try_float_ceil, at, out),
+            Builtin::FloatRound => op1(f(0), num::try_float_round, at, out),
+            Builtin::DivToInt => op2(i(0), i(1), num::try_div_to_int, at, out),
+            Builtin::DivFloor => op2(i(0), i(1), num::try_div_floor, at, out),
+            Builtin::DivCeil => op2(i(0), i(1), num::try_div_ceil, at, out),
+            Builtin::DivRound => op2(i(0), i(1), num::try_div_round, at, out),
+            Builtin::StrLength => op1(s(0), |a: Str| Ok(text::length(a.as_str())), at, out),
+            Builtin::StrIndexOf => op2(s(0), s(1), |a: Str, b: Str| Ok(text::index_of(a.as_str(), b.as_str())), at, out),
+            Builtin::StrLastIndexOf => op2(s(0), s(1), |a: Str, b: Str| Ok(text::last_index_of(a.as_str(), b.as_str())), at, out),
+            _ => unreachable!("not an int builtin: {op:?}"),
+        }
+    }
+
+    /// The builtins that give a `float`.
+    fn builtin_float<T: 'static, O: Fn(f64) -> T + Copy + 'static>(&self, op: Builtin, args: &[ir::Expr], at: Loc, out: O) -> F<T> {
+        let i = |k: usize| self.int(&args[k]);
+        let f = |k: usize| self.float(&args[k]);
+        match op {
+            Builtin::IntSqrt => op1(i(0), |a| Ok(num::int_sqrt(a)), at, out),
+            Builtin::IntToFloat => op1(i(0), |a| Ok(num::int_to_float(a)), at, out),
+            Builtin::FloatAbs => op1(f(0), |a| Ok(num::float_abs(a)), at, out),
+            Builtin::FloatSqrt => op1(f(0), |a| Ok(num::float_sqrt(a)), at, out),
+            Builtin::FloatPow => op2(f(0), f(1), |a, b| Ok(num::float_pow(a, b)), at, out),
+            Builtin::FloatMin => op2(f(0), f(1), |a, b| Ok(num::float_min(a, b)), at, out),
+            Builtin::FloatMax => op2(f(0), f(1), |a, b| Ok(num::float_max(a, b)), at, out),
+            _ => unreachable!("not a float builtin: {op:?}"),
+        }
+    }
+
+    /// The builtins that give a `bool`. None of them throws.
+    fn builtin_bool<T: 'static, O: Fn(bool) -> T + Copy + 'static>(&self, op: Builtin, args: &[ir::Expr], out: O) -> F<T> {
+        let s = |k: usize| self.str(&args[k]);
+        let at = Loc { file: self.file, func: self.func, line: 0, col: 0 };
+        let two = |p: fn(&str, &str) -> bool| op2(s(0), s(1), move |a: Str, b: Str| Ok(p(a.as_str(), b.as_str())), at, out);
+        match op {
+            Builtin::FloatIsNaN => op1(self.float(&args[0]), |a| Ok(num::float_is_nan(a)), at, out),
+            Builtin::StrIsEmpty => op1(s(0), |a: Str| Ok(text::is_empty(a.as_str())), at, out),
+            Builtin::StrIncludes => two(text::includes),
+            Builtin::StrStartsWith => two(text::starts_with),
+            Builtin::StrEndsWith => two(text::ends_with),
+            Builtin::StrIn => two(text::is_in),
+            _ => unreachable!("not a bool builtin: {op:?}"),
+        }
+    }
+
+    /// The builtins that give a `string`.
+    fn builtin_str(&self, op: Builtin, args: &[ir::Expr], at: Loc) -> F<Str> {
+        let i = |k: usize| self.int(&args[k]);
+        let s = |k: usize| self.str(&args[k]);
+        let id = identity;
+        let one = |p: fn(&str) -> Str| op1(s(0), move |a: Str| Ok(p(a.as_str())), at, id);
+        match op {
+            Builtin::FloatToFixed => op2(self.float(&args[0]), i(1), num::try_float_to_fixed, at, id),
+            Builtin::StrSlice => op3(s(0), i(1), i(2), |a: Str, x, y| text::try_slice(a.as_str(), x, y), at),
+            Builtin::StrTrim => one(text::trim),
+            Builtin::StrTrimStart => one(text::trim_start),
+            Builtin::StrTrimEnd => one(text::trim_end),
+            Builtin::StrToUpperCase => one(text::to_upper_case),
+            Builtin::StrToLowerCase => one(text::to_lower_case),
+            Builtin::StrReplace => {
+                op3(s(0), s(1), s(2), |a: Str, x: Str, y: Str| Ok(text::replace(a.as_str(), x.as_str(), y.as_str())), at)
+            }
+            Builtin::StrReplaceAll => {
+                op3(s(0), s(1), s(2), |a: Str, x: Str, y: Str| Ok(text::replace_all(a.as_str(), x.as_str(), y.as_str())), at)
+            }
+            Builtin::StrRepeat => op2(s(0), i(1), |a: Str, n| text::try_repeat(a.as_str(), n), at, id),
+            Builtin::StrPadStart => op3(s(0), i(1), s(2), |a: Str, n, f: Str| text::try_pad_start(a.as_str(), n, f.as_str()), at),
+            Builtin::StrPadEnd => op3(s(0), i(1), s(2), |a: Str, n, f: Str| text::try_pad_end(a.as_str(), n, f.as_str()), at),
+            Builtin::StrAt => op2(s(0), i(1), |a: Str, n| text::try_at(a.as_str(), n), at, id),
+            _ => unreachable!("not a string builtin: {op:?}"),
         }
     }
 
@@ -617,8 +871,10 @@ impl Compiler {
             ExprKind::Call { func, args, loc } => self.call(*func, args, *loc, Value::into_str),
             ExprKind::Cond { cond, then, els } => self.cond(cond, self.str(then), self.str(els)),
             ExprKind::Concat(_) => self.join(e),
+            ExprKind::Builtin { op, args, loc } => self.builtin_str(*op, args, self.loc(*loc)),
             ExprKind::ToStr(a) => match a.ty {
                 Type::Int => self.int_to(a, dat_rt::int_to_str),
+                Type::Float => self.float_to(a, dat_rt::float_to_str),
                 Type::Bool => self.bool_to(a, dat_rt::bool_to_str),
                 Type::Str => self.str(a),
                 Type::Error(_) => {
@@ -653,6 +909,7 @@ impl Compiler {
                 ExprKind::Str(text) => Piece::Text(text.as_str().into()),
                 ExprKind::Local(l) => Piece::Local(l.0 as usize),
                 ExprKind::ToStr(a) if a.ty == Type::Int => Piece::Int(self.int(a)),
+                ExprKind::ToStr(a) if a.ty == Type::Float => Piece::Float(self.float(a)),
                 ExprKind::ToStr(a) if a.ty == Type::Bool => Piece::Bool(self.bool(a)),
                 _ => Piece::Str(self.str(p)),
             })
@@ -716,6 +973,7 @@ enum Piece {
     Text(Box<str>),
     Local(usize),
     Int(F<i64>),
+    Float(F<f64>),
     Bool(F<bool>),
     Str(F<Str>),
 }
@@ -727,6 +985,7 @@ fn fill(pieces: &[Piece], j: &mut Join, c: &Code, m: &mut Machine, b: usize) -> 
             Piece::Text(t) => j.push_str(t),
             Piece::Local(l) => j.push_str(m.stack[b + l].str().as_str()),
             Piece::Int(f) => j.push_int(f(c, m, b)?),
+            Piece::Float(f) => j.push_float(f(c, m, b)?),
             Piece::Bool(f) => j.push_bool(f(c, m, b)?),
             Piece::Str(f) => j.push_str(f(c, m, b)?.as_str()),
         }
@@ -759,17 +1018,65 @@ fn holds(op: CmpOp, ord: Ordering) -> bool {
 
 fn compare(op: CmpOp, a: &Value, b: &Value) -> bool {
     let ord = match (a, b) {
-        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-        (Value::Str(x), Value::Str(y)) => x.as_str().cmp(y.as_str()),
+        (Value::Int(x), Value::Int(y)) => Some(x.cmp(y)),
+        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
+        (Value::Int(x), Value::Float(y)) => num::cmp_int_float(*x, *y),
+        (Value::Float(x), Value::Int(y)) => num::cmp_float_int(*x, *y),
+        (Value::Bool(x), Value::Bool(y)) => Some(x.cmp(y)),
+        (Value::Str(x), Value::Str(y)) => Some(x.as_str().cmp(y.as_str())),
         _ => unreachable!("type checker guarantees comparable operands"),
     };
-    holds(op, ord)
+    num::holds(rt_cmp(op), ord)
+}
+
+fn rt_cmp(op: CmpOp) -> num::Cmp {
+    match op {
+        CmpOp::Lt => num::Cmp::Lt,
+        CmpOp::Le => num::Cmp::Le,
+        CmpOp::Gt => num::Cmp::Gt,
+        CmpOp::Ge => num::Cmp::Ge,
+        CmpOp::Eq => num::Cmp::Eq,
+        CmpOp::Ne => num::Cmp::Ne,
+    }
+}
+
+/// A builtin of one argument; `f` gives its result or its error, and `out`
+/// converts the result.
+fn op1<A: 'static, V, T: 'static>(a: F<A>, f: impl Fn(A) -> R<V> + 'static, at: Loc, out: impl Fn(V) -> T + 'static) -> F<T> {
+    node(move |c, m, b| match f(a(c, m, b)?) {
+        Ok(v) => Ok(out(v)),
+        Err(err) => Err(thrown(err, at)),
+    })
+}
+
+fn op2<A: 'static, B: 'static, V, T: 'static>(
+    a: F<A>,
+    b2: F<B>,
+    f: impl Fn(A, B) -> R<V> + 'static,
+    at: Loc,
+    out: impl Fn(V) -> T + 'static,
+) -> F<T> {
+    node(move |c, m, b| {
+        let x = a(c, m, b)?;
+        match f(x, b2(c, m, b)?) {
+            Ok(v) => Ok(out(v)),
+            Err(err) => Err(thrown(err, at)),
+        }
+    })
+}
+
+fn op3<A: 'static, B: 'static, C: 'static>(a: F<A>, b2: F<B>, c3: F<C>, f: impl Fn(A, B, C) -> R<Str> + 'static, at: Loc) -> F<Str> {
+    node(move |c, m, b| {
+        let x = a(c, m, b)?;
+        let y = b2(c, m, b)?;
+        f(x, y, c3(c, m, b)?).map_err(|err| thrown(err, at))
+    })
 }
 
 fn debug(v: &Value) -> String {
     match v {
         Value::Int(n) => dat_rt::debug_int(*n),
+        Value::Float(x) => dat_rt::debug_float(*x),
         Value::Bool(b) => dat_rt::debug_bool(*b),
         Value::Str(s) => dat_rt::debug_str(s.as_str()),
         Value::Error(e) => e.to_display(),

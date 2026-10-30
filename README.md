@@ -5,10 +5,12 @@ interpreter for development and Rust code generation for production. The
 language is defined in [`reference/`](reference/README.md); the plan and the
 research behind it are in [`reports/`](reports/).
 
-This tree holds the **M0 walking skeleton**: a real, tiny version of every
-component, proven on [`examples/fib/fib.dat`](examples/fib/fib.dat) in both run
-modes. [`reports/M0 status.md`](<reports/M0 status.md>) checks it against the
-17 exit criteria.
+This tree holds **M1, the core language**: everything that works on single
+values, `int`, `float`, `string` and `bool`, with the functions, control flow,
+built-ins and tests around them, in both run modes. It grew from the M0
+walking skeleton, a real, tiny version of every component.
+[`reports/M1 status.md`](<reports/M1 status.md>) checks it against M1's 13 exit
+criteria, and [`reports/M0 status.md`](<reports/M0 status.md>) has M0's.
 
 ## Using it
 
@@ -29,10 +31,12 @@ which takes about 10 seconds; later runs reuse them.
 their exit statuses. Two commands exist for looking inside: `dat ir <file>`
 prints the typed IR, and `dat rust <file>` prints the generated Rust.
 
-M0 implements `int`, `bool` and `string`, functions, `let`/`const`, `if`,
-`for`, `while`, `break`/`continue`, `throw`, `try`/`catch` with the built-in
-error types, `print`, `assert`, `fail`, template strings, `toString()` and
-`test` blocks. Anything else is reported as `E0002: not supported yet`.
+M1 implements `int`, `float`, `bool` and `string` with their methods,
+functions with default values, `let`/`const`, `if`, `for`, `while`,
+`break`/`continue`, `throw`, `try`/`catch` with the built-in error types,
+`print`, `assert`, `fail`, template strings, `test` blocks, and the
+`@dat/math` module, imported by name or with `import * as`. Anything else
+is reported as `E0002: not supported yet`.
 
 ## How it fits together
 
@@ -47,10 +51,10 @@ src.dat -> dat-syntax -> dat-check -> dat-ir -+-> dat-interp ----------> dat-rt
 | Crate | Role |
 | --- | --- |
 | `dat-diag` | The diagnostic record of `reference/21-command-line.md`: code, byte span, message, label, `fixes[]` with applicability and `before` text; the terminal and `--json` renderers; applying fixes. |
-| `dat-syntax` | A lossless lexer (comments kept as trivia), a recursive-descent parser with Pratt expressions, and an arena AST with a byte span on every node. It parses more than M0 checks, so later constructs get "not supported yet" instead of syntax errors. |
-| `dat-check` | Name resolution, block scope, types and lowering to the IR in one pass per body; one diagnostic per root cause, each with a fix where one is certain. [`CODES.md`](crates/dat-check/CODES.md) lists the codes. |
+| `dat-syntax` | A lossless lexer (comments kept as trivia), a recursive-descent parser with Pratt expressions, and an arena AST with a byte span on every node. After a syntax error it resumes at the next statement. It parses more than M1 checks, so later constructs get "not supported yet" instead of syntax errors. |
+| `dat-check` | Name resolution, block scope, types and lowering to the IR in one pass per body; one diagnostic per root cause, each with a fix where one is certain. The standard library's interfaces are built in (`stdlib.rs`). [`CODES.md`](crates/dat-check/CODES.md) lists the codes. |
 | `dat-ir` | The typed IR both backends read: slot-indexed locals, checked integer operations with locations, structured control flow and try/catch regions. Evaluation order is the tree order. |
-| `dat-rt` | Every observable operation, once: checked arithmetic and its messages, error values, `print`, `toString`, `assert` rendering, the uncaught-error printer, the test reporter and the stack guard. |
+| `dat-rt` | Every observable operation, once: checked arithmetic and its messages, the methods of numbers (`num`) and strings (`text`), float printing, error values, `print`, `toString`, `assert` rendering, the uncaught-error printer, the test reporter and the stack guard. |
 | `dat-interp` | Compiles each function's IR to closures once, then runs them, calling dat-rt. Errors propagate as `Result`. |
 | `dat-codegen` | Emits one Rust function per dat function and builds it with Cargo against dat-rt, with the toolchain pinned. Runtime errors unwind. |
 | `dat` | The command line. |
@@ -112,6 +116,8 @@ target/release/dat-conformance perf               # latency budgets and speed ga
   `X.fixed` is the expected text after applying the safe fixes from
   `dat check --json`, and `X.reviewed` the text after applying each
   diagnostic's preferred safe or review fix; either result must check clean.
+  Every example's safe fixes, applied as `dat fix` applies them, must give
+  code that parses.
   `--bless` rewrites the goldens from the interpreter.
 - **Spec blocks.** The runner extracts all 179 code blocks in `reference/`
   and reads the reference's own comments as expectations: `// ❌ E0301:` with
@@ -122,11 +128,13 @@ target/release/dat-conformance perf               # latency budgets and speed ga
   uses without declaring them.
 - **Perf.** Interpreter-path latency budgets (`dat check fib.dat` ≤ 10 ms,
   `dat test fib.dat` ≤ 20 ms, `dat run hello.dat` ≤ 5 ms), the compiled-path
-  budget, compiled `fib(35)` against hand-written Rust, and interpreted
-  `fib(30)` against CPython. Shown but not judged: the stack guard's cost on
+  budget, compiled `fib(35)` against hand-written Rust, compiled float code
+  (`floats`) within 4% of hand-written Rust, and interpreted `fib(30)`
+  against CPython. Shown but not judged: the stack guard's cost on
   `fib(35)`, the worst case; Ackermann, mutual recursion, a loop (`primes`)
-  and string building (`rows`) against hand-written Rust; and the loop and
-  string building interpreted against CPython. Limits are judged on the reference machine named in the M0 report;
+  and string building (`rows`) against hand-written Rust; the loop, string
+  building and float code interpreted against CPython; and how many lines
+  of Rust each line of dat becomes. Limits are judged on the reference machine named in the M0 report;
   `--shared-runner`, used in CI, fails only at twice a limit.
 
 Generated crates live in `target/dat-cache` (override with `DAT_CACHE_DIR`).

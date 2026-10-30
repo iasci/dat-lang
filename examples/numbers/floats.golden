@@ -1,0 +1,26 @@
+# Golden results for floats.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 0
+--- stdout
+3.14 2.0 1000000000.0 1000.5 1.0 2.5 1.0 -2.5
+2.5 2.0 12.5 9.5 4.5 1.5 -1.5 0.0
+Infinity -Infinity NaN -Infinity NaN
+false true false false
+true true false false
+true false true
+0.1 0.30000000000000004 100.0 100000000000000000000.0 1e21 1.5e21 0.000001 1e-7 1.5e-7 12345600.0
+-0.0 0.0 1.7976931348623157e308 5e-324 2e-308
+x = 0.7999999999999999 0.7999999999999999 x = 0.7999999999999999
+3.25
+0.9999999999999999 false
+1.0 -1.0
+
+=== test
+status: 0
+--- stdout
+0 failed, 3 passed (<ms>)

@@ -1,0 +1,38 @@
+// Parsing resumes at the next statement after a syntax error, so one run
+// reports every error, and nothing that follows from one: `three` has
+// three syntax errors and gets three diagnostics. A function whose header
+// has an error is still declared, so its calls aren't reported, and a `{`
+// after a condition with its `)` missing starts the block.
+
+function pair(a: int b: int): int {
+  return a + b
+}
+
+function gate(ready: bool): void {
+  if (ready {
+    print("ready");
+  }
+  print("done");
+}
+
+function three(): int {
+  let a = (1 + ;
+  let b = a * 2;
+  if (b === 2) {
+    print("two");
+  }
+  print(a, b);
+  return b
+}
+
+function words(): void {
+  var c = 1;
+  print(c);
+}
+
+function main(): void {
+  print(three() + 1);
+  words();
+  print(pair(1, 2));
+  gate(true);
+}

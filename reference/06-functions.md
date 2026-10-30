@@ -88,6 +88,12 @@ connect("localhost", 6543);             // label = null
 connect("localhost", 6543, "primary");
 ```
 
+A parameter without a default can't follow one with a default, since no call could leave out the first and give the second:
+
+```
+function between(low: int = 0, high: int): bool { return low < high; }   // ❌ E0656: `high` needs a default value, because a parameter before it has one
+```
+
 A call needs an argument for each parameter that has no default, and can't pass more arguments than there are parameters:
 
 ```

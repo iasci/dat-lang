@@ -11,3 +11,8 @@ function two(): bool {
 function three(): void {
   print("three" + 3);
 }
+
+function four(): void {
+  const x = 1
+  function
+}

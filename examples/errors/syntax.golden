@@ -24,4 +24,9 @@ error[E0301]: can't add string and int
    |         ^^^^^^^^^^^ `3` is an int
 fix: use a template string
 12 |   print(`three${3}`);
-3 errors, 3 fixable with dat fix
+
+error[E0001]: expected `;`, found `function`
+  --> syntax.dat:17:3
+17 |   function
+   |   ^^^^^^^^ the statement before this needs a `;`
+4 errors, 3 fixable with dat fix

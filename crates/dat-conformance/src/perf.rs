@@ -14,6 +14,9 @@
 //! tuned to `fib` shows what it does elsewhere: two other recursive shapes,
 //! and everyday code, a loop (`primes`) and string building (`rows`),
 //! compiled against hand-written Rust and interpreted against CPython.
+//! Float code (`floats`, M1) is judged: within about 4% of hand-written
+//! Rust. Last, the size of the generated Rust per line of dat, which build
+//! budgets can be stated in.
 
 use crate::Opts;
 use crate::run::dat_binary;
@@ -170,6 +173,18 @@ pub fn run(opts: &Opts) -> bool {
         }
     }
 
+    println!("compiled float code (M1)");
+    let (hand, ours) = (out.join("floats_hand"), out.join("floats_dat"));
+    if rustc(&bench.join("floats.rs"), &hand)
+        && run_in(&bench, &["build", "floats.dat", "-o"]).arg(&ours).status().is_ok_and(|s| s.success())
+    {
+        let t = time_interleaved(&mut [&mut Command::new(&ours), &mut Command::new(&hand)], 2 * RUNS).unwrap();
+        g.ratio("generated floats vs hand-written Rust", t[0], t[1], "hand-written", 1.04);
+    } else {
+        println!("  can't build bench/floats.dat or bench/floats.rs");
+        g.failed.push("build bench/floats".into());
+    }
+
     println!("other programs, shown but not judged");
     let others = [
         ("ack", "generated ack(3, 10) vs hand-written Rust"),
@@ -199,7 +214,11 @@ pub fn run(opts: &Opts) -> bool {
         let t = time_interleaved(&mut [&mut ours, &mut cpython], 10).unwrap();
         let (ours, cpython) = (t[0], t[1]);
         g.ratio("interpreted fib(30) vs CPython", ours, cpython, "CPython", 2.0);
-        for (name, what) in [("primes", "interpreted primes loop vs CPython"), ("rows", "interpreted string rows vs CPython")] {
+        for (name, what) in [
+            ("primes", "interpreted primes loop vs CPython"),
+            ("rows", "interpreted string rows vs CPython"),
+            ("floats", "interpreted floats vs CPython"),
+        ] {
             let mut ours = run_in(&bench, &["run", &format!("{name}.dat")]);
             let mut cpython = Command::new("python3");
             cpython.arg(bench.join(format!("{name}.py")));
@@ -209,6 +228,22 @@ pub fn run(opts: &Opts) -> bool {
     } else {
         println!("  python3 not found; skipping the CPython gate");
     }
+
+    println!("generated Rust per line of dat, shown but not judged");
+    let (mut dat_total, mut rust_total) = (0, 0);
+    for name in ["fib35", "ack", "mutual", "primes", "rows", "floats"] {
+        let src = std::fs::read_to_string(bench.join(format!("{name}.dat"))).unwrap_or_default();
+        let rust = run_in(&bench, &["rust", &format!("{name}.dat")]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+        let (d, r) = (code_lines(&src), code_lines(&rust.unwrap_or_default()));
+        dat_total += d;
+        rust_total += r;
+        println!("  {name:<44} {d:>5} dat lines {r:>6} Rust lines   {:.1} per line", r as f64 / d.max(1) as f64);
+    }
+    println!(
+        "  {:<44} {dat_total:>5} dat lines {rust_total:>6} Rust lines   {:.1} per line",
+        "all",
+        rust_total as f64 / dat_total.max(1) as f64
+    );
 
     if !g.soft.is_empty() {
         println!("perf: over the limit but within 2x on a shared runner: {}", g.soft.join(", "));
@@ -220,6 +255,11 @@ pub fn run(opts: &Opts) -> bool {
         println!("perf: FAILED: {}", g.failed.join(", "));
         false
     }
+}
+
+/// Lines that hold code: not blank, and not only a comment.
+fn code_lines(text: &str) -> usize {
+    text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("//")).count()
 }
 
 fn dat_codegen_toolchain() -> &'static str {

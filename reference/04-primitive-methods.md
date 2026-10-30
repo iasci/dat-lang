@@ -57,9 +57,9 @@ print([price, price]);     // [$19.99, $19.99]
 | `abs()` | `() => float` | Absolute value |
 | `sqrt()` | `() => float` | Square root |
 | `pow(exponent)` | `(exponent: float) => float` | The value to the power of `exponent` |
-| `min(other)` | `(other: float) => float` | The smaller of the two |
-| `max(other)` | `(other: float) => float` | The larger of the two |
-| `toFixed(digits)` | `(digits: int) => string` | Text with exactly `digits` decimals, rounded to nearest with ties away from zero: `3.14159.toFixed(2)` is `"3.14"` |
+| `min(other)` | `(other: float) => float` | The smaller of the two. `NaN` if either is `NaN`; `-0.0` is smaller than `0.0`. |
+| `max(other)` | `(other: float) => float` | The larger of the two. `NaN` if either is `NaN`; `0.0` is larger than `-0.0`. |
+| `toFixed(digits)` | `(digits: int) => string` | Text with exactly `digits` decimals, rounded to nearest with ties away from zero: `3.14159.toFixed(2)` is `"3.14"`. A tie means the float's exact value, so `1.005.toFixed(2)` is `"1.00"`: the float is just below 1.005. `NaN` and the infinities give their `toString()`. Throws a `RangeError` unless `digits` is from 0 to 100. |
 | `isNaN()` | `() => bool` | `true` if the value is `NaN` |
 | `toString()` | `() => string` | Convert to text |
 
@@ -78,7 +78,7 @@ Strings are UTF-8. Lengths and positions count **bytes**, which is the same as c
 | `endsWith(suffix)` | `(suffix: string) => bool` | `true` if the string ends with `suffix` |
 | `indexOf(text)` | `(text: string) => int` | Byte position of the first occurrence, or `-1` |
 | `lastIndexOf(text)` | `(text: string) => int` | Byte position of the last occurrence, or `-1` |
-| `slice(start, end?)` | `(start: int, end: int?) => string` | Text from `start` (inclusive) to `end` (exclusive, default the end). Negative positions count from the end, and out-of-range positions are clamped. Throws a `RangeError` if a position falls inside a multi-byte character. |
+| `slice(start, end?)` | `(start: int, end: int?) => string` | Text from `start` (inclusive) to `end` (exclusive, default the end). Negative positions count from the end, and out-of-range positions are clamped. Throws a `RangeError` if a position falls inside a multi-byte character, even when `start` is past `end` and the result is empty. |
 | `split(separator)` | `(separator: string) => list<string>` | Split on `separator`. Separators at the edges give empty strings: `"a,".split(",")` is `["a", ""]`. |
 | `trim()` | `() => string` | Remove leading and trailing whitespace |
 | `trimStart()` | `() => string` | Remove leading whitespace |
@@ -87,9 +87,9 @@ Strings are UTF-8. Lengths and positions count **bytes**, which is the same as c
 | `toLowerCase()` | `() => string` | Convert to lowercase |
 | `replace(from, to)` | `(from: string, to: string) => string` | Replace the **first** occurrence of `from` |
 | `replaceAll(from, to)` | `(from: string, to: string) => string` | Replace every occurrence of `from` |
-| `repeat(count)` | `(count: int) => string` | The string repeated `count` times |
-| `padStart(length, fill?)` | `(length: int, fill: string = " ") => string` | Pad at the start up to `length` bytes |
-| `padEnd(length, fill?)` | `(length: int, fill: string = " ") => string` | Pad at the end up to `length` bytes |
+| `repeat(count)` | `(count: int) => string` | The string repeated `count` times. Throws a `RangeError` if `count` is negative or the result is too long to hold. |
+| `padStart(length, fill?)` | `(length: int, fill: string = " ") => string` | Pad at the start up to `length` bytes, with `fill` repeated. A character of `fill` that would go past `length` is left out, so the result can be shorter. |
+| `padEnd(length, fill?)` | `(length: int, fill: string = " ") => string` | Pad at the end, as `padStart` does at the start |
 | `toInt()` | `() => int throws ValueError` | Parse as an integer |
 | `toFloat()` | `() => float throws ValueError` | Parse as a float |
 | `toString()` | `() => string` | The string itself |

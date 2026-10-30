@@ -45,6 +45,9 @@ pub struct Function {
     pub name: String,
     /// The first `params` locals are the parameters, in order.
     pub params: u32,
+    /// The values of the last `defaults.len()` parameters when a call leaves
+    /// them out, in order. Each may read the parameters before it.
+    pub defaults: Vec<Expr>,
     pub ret: Type,
     pub locals: Vec<Local>,
     pub body: Block,
@@ -71,6 +74,7 @@ pub struct Test {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     Int,
+    Float,
     Bool,
     Str,
     Void,
@@ -82,6 +86,7 @@ impl Type {
     pub fn name(self) -> &'static str {
         match self {
             Type::Int => "int",
+            Type::Float => "float",
             Type::Bool => "bool",
             Type::Str => "string",
             Type::Void => "void",
@@ -239,6 +244,29 @@ impl IntOp {
     }
 }
 
+/// Float arithmetic follows IEEE 754 and never throws: dividing by zero
+/// gives `Infinity`, `-Infinity` or `NaN`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FloatOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+}
+
+impl FloatOp {
+    pub fn symbol(self) -> &'static str {
+        match self {
+            FloatOp::Add => "+",
+            FloatOp::Sub => "-",
+            FloatOp::Mul => "*",
+            FloatOp::Div => "/",
+            FloatOp::Rem => "%",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CmpOp {
     Lt,
@@ -265,6 +293,7 @@ impl CmpOp {
 #[derive(Clone, Debug)]
 pub enum ExprKind {
     Int(i64),
+    Float(f64),
     Bool(bool),
     Str(String),
     Local(LocalId),
@@ -284,7 +313,22 @@ pub enum ExprKind {
         arg: Box<Expr>,
         loc: Loc,
     },
-    /// Compares two operands of type `int`, `bool` or `string`, given by `lhs.ty`.
+    FloatArith {
+        op: FloatOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
+    FloatNeg(Box<Expr>),
+    /// A method of a number or a string, or a standard library function, by
+    /// its one implementation in dat-rt. `loc` is where it throws, if it can.
+    Builtin {
+        op: Builtin,
+        args: Vec<Expr>,
+        loc: Loc,
+    },
+    /// Compares two operands of type `int`, `float`, `bool` or `string`.
+    /// The types are the same, except that an `int` and a `float` compare
+    /// by their exact values.
     Compare {
         op: CmpOp,
         lhs: Box<Expr>,
@@ -300,7 +344,7 @@ pub enum ExprKind {
     },
     /// Joins string-typed parts.
     Concat(Vec<Expr>),
-    /// `toString()` of an `int`, `bool`, `string` or error value.
+    /// `toString()` of an `int`, `float`, `bool`, `string` or error value.
     ToStr(Box<Expr>),
     NewError {
         kind: ErrorType,
@@ -341,4 +385,173 @@ pub enum AssertCond {
         lhs: Expr,
         rhs: Expr,
     },
+}
+
+/// The operations on numbers and strings that dat-rt implements, each once.
+/// The checker lowers methods and standard library functions to them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Builtin {
+    IntAbs,
+    IntMin,
+    IntMax,
+    IntSqrt,
+    IntPow,
+    IntToFloat,
+    FloatToInt,
+    FloatFloor,
+    FloatCeil,
+    FloatRound,
+    FloatAbs,
+    FloatSqrt,
+    FloatPow,
+    FloatMin,
+    FloatMax,
+    FloatToFixed,
+    FloatIsNaN,
+    /// `(a / b).toInt()` with two `int`s, computed exactly.
+    DivToInt,
+    DivFloor,
+    DivCeil,
+    DivRound,
+    StrLength,
+    StrIsEmpty,
+    StrIncludes,
+    StrStartsWith,
+    StrEndsWith,
+    StrIndexOf,
+    StrLastIndexOf,
+    StrSlice,
+    StrTrim,
+    StrTrimStart,
+    StrTrimEnd,
+    StrToUpperCase,
+    StrToLowerCase,
+    StrReplace,
+    StrReplaceAll,
+    StrRepeat,
+    StrPadStart,
+    StrPadEnd,
+    /// `s[i]`
+    StrAt,
+    /// `item in s`: the item first, then the string.
+    StrIn,
+}
+
+impl Builtin {
+    /// The argument types, the receiver first, and the result type.
+    pub fn sig(self) -> (&'static [Type], Type) {
+        use Builtin::*;
+        use Type::{Bool as B, Float as F, Int as I, Str as S};
+        match self {
+            IntAbs => (&[I], I),
+            IntMin | IntMax | IntPow => (&[I, I], I),
+            IntSqrt | IntToFloat => (&[I], F),
+            FloatToInt | FloatFloor | FloatCeil | FloatRound => (&[F], I),
+            FloatAbs | FloatSqrt => (&[F], F),
+            FloatPow | FloatMin | FloatMax => (&[F, F], F),
+            FloatToFixed => (&[F, I], S),
+            FloatIsNaN => (&[F], B),
+            DivToInt | DivFloor | DivCeil | DivRound => (&[I, I], I),
+            StrLength => (&[S], I),
+            StrIsEmpty => (&[S], B),
+            StrIncludes | StrStartsWith | StrEndsWith => (&[S, S], B),
+            StrIndexOf | StrLastIndexOf => (&[S, S], I),
+            StrSlice => (&[S, I, I], S),
+            StrTrim | StrTrimStart | StrTrimEnd | StrToUpperCase | StrToLowerCase => (&[S], S),
+            StrReplace | StrReplaceAll => (&[S, S, S], S),
+            StrRepeat | StrAt => (&[S, I], S),
+            StrIn => (&[S, S], B),
+            StrPadStart | StrPadEnd => (&[S, I, S], S),
+        }
+    }
+
+    /// Whether it can throw a `RangeError`.
+    pub fn throws(self) -> bool {
+        use Builtin::*;
+        matches!(
+            self,
+            IntAbs
+                | IntPow
+                | FloatToInt
+                | FloatFloor
+                | FloatCeil
+                | FloatRound
+                | FloatToFixed
+                | DivToInt
+                | DivFloor
+                | DivCeil
+                | DivRound
+                | StrSlice
+                | StrRepeat
+                | StrPadStart
+                | StrPadEnd
+                | StrAt
+        )
+    }
+
+    /// The name of its dat-rt function, in `dat_rt::num` or `dat_rt::text`.
+    pub fn rt_name(self) -> &'static str {
+        use Builtin::*;
+        match self {
+            IntAbs => "int_abs",
+            IntMin => "int_min",
+            IntMax => "int_max",
+            IntSqrt => "int_sqrt",
+            IntPow => "int_pow",
+            IntToFloat => "int_to_float",
+            FloatToInt => "float_to_int",
+            FloatFloor => "float_floor",
+            FloatCeil => "float_ceil",
+            FloatRound => "float_round",
+            FloatAbs => "float_abs",
+            FloatSqrt => "float_sqrt",
+            FloatPow => "float_pow",
+            FloatMin => "float_min",
+            FloatMax => "float_max",
+            FloatToFixed => "float_to_fixed",
+            FloatIsNaN => "float_is_nan",
+            DivToInt => "div_to_int",
+            DivFloor => "div_floor",
+            DivCeil => "div_ceil",
+            DivRound => "div_round",
+            StrLength => "length",
+            StrIsEmpty => "is_empty",
+            StrIncludes => "includes",
+            StrStartsWith => "starts_with",
+            StrEndsWith => "ends_with",
+            StrIndexOf => "index_of",
+            StrLastIndexOf => "last_index_of",
+            StrSlice => "slice",
+            StrTrim => "trim",
+            StrTrimStart => "trim_start",
+            StrTrimEnd => "trim_end",
+            StrToUpperCase => "to_upper_case",
+            StrToLowerCase => "to_lower_case",
+            StrReplace => "replace",
+            StrReplaceAll => "replace_all",
+            StrRepeat => "repeat",
+            StrPadStart => "pad_start",
+            StrPadEnd => "pad_end",
+            StrAt => "at",
+            StrIn => "is_in",
+        }
+    }
+
+    /// Its dat-rt module: `num` for numbers, `text` for strings.
+    /// The operation that gives this rounding's result exactly when its
+    /// operand is `a / b` with two `int`s (§03).
+    pub fn on_int_division(self) -> Option<Builtin> {
+        use Builtin::*;
+        Some(match self {
+            FloatToInt => DivToInt,
+            FloatFloor => DivFloor,
+            FloatCeil => DivCeil,
+            FloatRound => DivRound,
+            _ => return None,
+        })
+    }
+
+    pub fn rt_module(self) -> &'static str {
+        if self.sig().0[0] == Type::Str { "text" } else { "num" }
+    }
 }

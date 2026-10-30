@@ -13,6 +13,6 @@ RangeError: int overflow: -(-9223372036854775808)
 RangeError: int remainder by zero: 7 % 0
 RangeError: int overflow: -9223372036854775808 - 1
 RangeError: int overflow: 9223372036854775807 * 2
-RangeError: int overflow: -9223372036854775808 % -1
+0
 -1
 1

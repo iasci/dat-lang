@@ -1,0 +1,7 @@
+// A missing `;` at the end of a line gets it as a fix, and `dat fix` applies it.
+
+function main(): void {
+  let total = 1
+  total += 2
+  print(total)
+}

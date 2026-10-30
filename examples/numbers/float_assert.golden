@@ -1,0 +1,20 @@
+# Golden results for float_assert.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== test
+status: 1
+--- stdout
+FAIL float_assert.dat:8  sum
+  assert(sum == 0.3)
+    left:  0.30000000000000004
+    right: 0.3
+
+FAIL float_assert.dat:12  int and float
+  assert(7 / 2 == 3)
+    left:  3.5
+    right: 3
+
+2 failed, 0 passed (<ms>)

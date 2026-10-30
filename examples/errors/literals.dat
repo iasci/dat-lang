@@ -1,0 +1,8 @@
+// A literal that isn't a number is a syntax error, not one that's too large.
+
+function main(): void {
+  const empty = 0x;
+  const binary = 0b102;
+  const hex = 0xfg;
+  print(empty, binary, hex);
+}

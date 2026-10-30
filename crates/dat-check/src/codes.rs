@@ -15,6 +15,9 @@ pub const MISMATCH: &str = "E0250";
 pub const LET_NO_VALUE: &str = "E0203";
 /// §02: no type and no value.
 pub const NO_TYPE_NO_VALUE: &str = "E0204";
+/// §01: a number literal outside the range of its type.
+pub const LITERAL_RANGE: &str = "E0150";
+
 /// §02: const must be initialized.
 pub const CONST_NO_VALUE: &str = "E0205";
 /// §02: a variable can't hold `void`.
@@ -22,10 +25,14 @@ pub const VOID_VALUE: &str = "E0252";
 
 /// §03: can't add string and int.
 pub const STRING_PLUS: &str = "E0301";
+/// §03: a compound assignment would make an `int` variable a float.
+pub const INT_BECOMES_FLOAT: &str = "E0302";
 /// §03: `++` is a statement.
 pub const INCDEC_EXPR: &str = "E0303";
 /// §03: no prefix form.
 pub const INCDEC_PREFIX: &str = "E0304";
+/// §03: a statement with no effect.
+pub const NO_EFFECT: &str = "E0305";
 /// §03: an operator doesn't apply to these operand types.
 pub const BAD_OPERANDS: &str = "E0350";
 
@@ -41,6 +48,8 @@ pub const RETURN_NO_VALUE: &str = "E0653";
 pub const NEVER_RETURNS: &str = "E0654";
 /// §06: an exported function without a declared return type.
 pub const EXPORT_NEEDS_TYPE: &str = "E0655";
+/// §06: a parameter without a default after one with a default.
+pub const DEFAULT_ORDER: &str = "E0656";
 /// §06: no `main`, for `dat run` and `dat build`.
 pub const NO_MAIN: &str = "E0660";
 /// §06: `main` has parameters or doesn't return `void`.
@@ -67,6 +76,11 @@ pub const CATCH_ALL_NOT_LAST: &str = "E1252";
 pub const UNDEFINED: &str = "E1401";
 /// §14: `x` is already declared.
 pub const REDECLARED: &str = "E1402";
+
+/// §17: a module doesn't export that name.
+pub const NOT_EXPORTED: &str = "E1701";
+/// §17: an import path must start with `./`, `../` or `@`.
+pub const IMPORT_PATH: &str = "E1703";
 
 /// §20: two tests in one module have the same name.
 pub const DUPLICATE_TEST: &str = "E2050";

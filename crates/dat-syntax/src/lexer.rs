@@ -136,6 +136,11 @@ impl Lexer<'_> {
     }
 
     fn run(&mut self) {
+        // A UTF-8 byte order mark, which some editors write.
+        if self.s.starts_with(b"\xEF\xBB\xBF") {
+            self.i = 3;
+            self.push(TokenKind::Whitespace, 0);
+        }
         while self.i < self.s.len() {
             let start = self.i;
             let c = self.s[self.i];
@@ -203,6 +208,14 @@ impl Lexer<'_> {
                 }
                 _ => self.punct(),
             };
+            // An unclosed comment or template string: its opening is the
+            // error, and the rest of the file is skipped as trivia.
+            if kind == TokenKind::Unknown && matches!(c, b'/' | b'`' | b'}') {
+                let open = start + if c == b'/' { 2 } else { 1 };
+                self.out.push(Token { kind, span: Span::new(start as u32, open as u32) });
+                self.push(TokenKind::BlockComment, open);
+                continue;
+            }
             self.push(kind, start);
         }
         let end = self.s.len();

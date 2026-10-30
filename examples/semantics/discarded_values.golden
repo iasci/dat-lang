@@ -7,6 +7,10 @@ status: 0
 === run
 status: 0
 --- stdout
-1
-2
+five
+five
+five
+five
+five
+five
 ok

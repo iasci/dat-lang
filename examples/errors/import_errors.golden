@@ -1,0 +1,224 @@
+# Golden results for import_errors.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E1701]: `pi` isn't exported by `@dat/math`
+ --> import_errors.dat:4:10
+4 | import { pi, Clamp, flor } from "@dat/math";
+  |          ^^
+fix (review): import `PI`
+4 | import { PI, Clamp, flor } from "@dat/math";
+
+error[E1701]: `Clamp` isn't exported by `@dat/math`
+ --> import_errors.dat:4:14
+4 | import { pi, Clamp, flor } from "@dat/math";
+  |              ^^^^^
+
+error[E1701]: `flor` isn't exported by `@dat/math`
+ --> import_errors.dat:4:21
+4 | import { pi, Clamp, flor } from "@dat/math";
+  |                     ^^^^
+fix (review): import `floor`
+4 | import { pi, Clamp, floor } from "@dat/math";
+
+error[E0002]: not supported yet: the standard library module `@dat/tasks`
+ --> import_errors.dat:5:27
+5 | import { taskGroup } from "@dat/tasks";
+  |                           ^^^^^^^^^^^^
+
+error[E0002]: not supported yet: imports of files
+ --> import_errors.dat:6:24
+6 | import { Vector } from "./vector.dat";
+  |                        ^^^^^^^^^^^^^^
+
+error[E0002]: not supported yet: packages
+ --> import_errors.dat:7:25
+7 | import { connect } from "@acme/postgres";
+  |                         ^^^^^^^^^^^^^^^^
+
+error[E1402]: `floor` is already declared
+ --> import_errors.dat:9:17
+9 | import { floor, floor } from "@dat/math";
+  |                 ^^^^^ each import needs its own name
+
+error[E1703]: the standard library's paths start with `@dat/`
+  --> import_errors.dat:10:30
+10 | import { sqrt as root } from "@std/math";
+   |                              ^^^^^^^^^^^
+fix: import `@dat/math`
+10 | import { sqrt as root } from "@dat/math";
+
+error[E1703]: the standard library has no module `@dat/maths`
+  --> import_errors.dat:11:19
+11 | import { E } from "@dat/maths";
+   |                   ^^^^^^^^^^^^
+fix (review): import `@dat/math`
+11 | import { E } from "@dat/math";
+
+error[E0250]: `math` is a module, not a value
+  --> import_errors.dat:15:9
+15 |   print(math, math.clamp(1), Math.max(1, 2));
+   |         ^^^^ use one of its members, such as `math.PI`
+
+error[E1701]: `clamp` isn't exported by `@dat/math`
+  --> import_errors.dat:15:20
+15 |   print(math, math.clamp(1), Math.max(1, 2));
+   |                    ^^^^^
+
+error[E1401]: Math is not defined
+  --> import_errors.dat:15:30
+15 |   print(math, math.clamp(1), Math.max(1, 2));
+   |                              ^^^^
+fix (review): use `math`
+15 |   print(math, math.clamp(1), math.max(1, 2));
+
+error[E0201]: `floor` is imported and can't be reassigned
+  --> import_errors.dat:17:3
+17 |   floor = 1;
+   |   ^^^^^ to change a copy, declare a `let` variable with another name
+
+error[E1701]: `pi` isn't exported by `@dat/math`
+  --> import_errors.dat:18:14
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |              ^^
+fix (review): use `PI`
+18 |   print(math.PI, math(2), math.max("a", 1, "b"), math.PI(1));
+
+error[E0250]: `math` is a module, not a function
+  --> import_errors.dat:18:18
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |                  ^^^^ call one of its functions, such as `math.abs(...)`
+
+error[E0250]: `max` needs a number, and this is a string
+  --> import_errors.dat:18:36
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |                                    ^^^
+
+error[E0250]: `max` needs a number, and this is a string
+  --> import_errors.dat:18:44
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |                                            ^^^
+
+error[E0350]: `PI` is a float, not a function
+  --> import_errors.dat:18:50
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |                                                  ^^^^^^^^^^
+
+error[E0001]: imports go at the top of the file, before any declarations
+  --> import_errors.dat:21:1
+21 | import { sqrt } from "@dat/math";
+   | ^^^^^^
+19 errors, 1 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E1701]: `pi` isn't exported by `@dat/math`
+ --> import_errors.dat:4:10
+4 | import { pi, Clamp, flor } from "@dat/math";
+  |          ^^
+fix (review): import `PI`
+4 | import { PI, Clamp, flor } from "@dat/math";
+
+error[E1701]: `Clamp` isn't exported by `@dat/math`
+ --> import_errors.dat:4:14
+4 | import { pi, Clamp, flor } from "@dat/math";
+  |              ^^^^^
+
+error[E1701]: `flor` isn't exported by `@dat/math`
+ --> import_errors.dat:4:21
+4 | import { pi, Clamp, flor } from "@dat/math";
+  |                     ^^^^
+fix (review): import `floor`
+4 | import { pi, Clamp, floor } from "@dat/math";
+
+error[E0002]: not supported yet: the standard library module `@dat/tasks`
+ --> import_errors.dat:5:27
+5 | import { taskGroup } from "@dat/tasks";
+  |                           ^^^^^^^^^^^^
+
+error[E0002]: not supported yet: imports of files
+ --> import_errors.dat:6:24
+6 | import { Vector } from "./vector.dat";
+  |                        ^^^^^^^^^^^^^^
+
+error[E0002]: not supported yet: packages
+ --> import_errors.dat:7:25
+7 | import { connect } from "@acme/postgres";
+  |                         ^^^^^^^^^^^^^^^^
+
+error[E1402]: `floor` is already declared
+ --> import_errors.dat:9:17
+9 | import { floor, floor } from "@dat/math";
+  |                 ^^^^^ each import needs its own name
+
+error[E1703]: the standard library's paths start with `@dat/`
+  --> import_errors.dat:10:30
+10 | import { sqrt as root } from "@std/math";
+   |                              ^^^^^^^^^^^
+fix: import `@dat/math`
+10 | import { sqrt as root } from "@dat/math";
+
+error[E1703]: the standard library has no module `@dat/maths`
+  --> import_errors.dat:11:19
+11 | import { E } from "@dat/maths";
+   |                   ^^^^^^^^^^^^
+fix (review): import `@dat/math`
+11 | import { E } from "@dat/math";
+
+error[E0250]: `math` is a module, not a value
+  --> import_errors.dat:15:9
+15 |   print(math, math.clamp(1), Math.max(1, 2));
+   |         ^^^^ use one of its members, such as `math.PI`
+
+error[E1701]: `clamp` isn't exported by `@dat/math`
+  --> import_errors.dat:15:20
+15 |   print(math, math.clamp(1), Math.max(1, 2));
+   |                    ^^^^^
+
+error[E1401]: Math is not defined
+  --> import_errors.dat:15:30
+15 |   print(math, math.clamp(1), Math.max(1, 2));
+   |                              ^^^^
+fix (review): use `math`
+15 |   print(math, math.clamp(1), math.max(1, 2));
+
+error[E0201]: `floor` is imported and can't be reassigned
+  --> import_errors.dat:17:3
+17 |   floor = 1;
+   |   ^^^^^ to change a copy, declare a `let` variable with another name
+
+error[E1701]: `pi` isn't exported by `@dat/math`
+  --> import_errors.dat:18:14
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |              ^^
+fix (review): use `PI`
+18 |   print(math.PI, math(2), math.max("a", 1, "b"), math.PI(1));
+
+error[E0250]: `math` is a module, not a function
+  --> import_errors.dat:18:18
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |                  ^^^^ call one of its functions, such as `math.abs(...)`
+
+error[E0250]: `max` needs a number, and this is a string
+  --> import_errors.dat:18:36
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |                                    ^^^
+
+error[E0250]: `max` needs a number, and this is a string
+  --> import_errors.dat:18:44
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |                                            ^^^
+
+error[E0350]: `PI` is a float, not a function
+  --> import_errors.dat:18:50
+18 |   print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+   |                                                  ^^^^^^^^^^
+
+error[E0001]: imports go at the top of the file, before any declarations
+  --> import_errors.dat:21:1
+21 | import { sqrt } from "@dat/math";
+   | ^^^^^^
+19 errors, 1 fixable with dat fix

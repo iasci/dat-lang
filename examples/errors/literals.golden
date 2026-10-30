@@ -1,0 +1,40 @@
+# Golden results for literals.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0001]: `0x` isn't a valid number
+ --> literals.dat:4:17
+4 |   const empty = 0x;
+  |                 ^^ `0x` needs digits after it
+
+error[E0001]: `0b102` isn't a valid number
+ --> literals.dat:5:18
+5 |   const binary = 0b102;
+  |                  ^^^^^ `2` isn't a binary digit
+
+error[E0001]: `0xfg` isn't a valid number
+ --> literals.dat:6:15
+6 |   const hex = 0xfg;
+  |               ^^^^ `g` isn't a hexadecimal digit
+3 errors
+
+=== run
+status: 2
+--- stderr
+error[E0001]: `0x` isn't a valid number
+ --> literals.dat:4:17
+4 |   const empty = 0x;
+  |                 ^^ `0x` needs digits after it
+
+error[E0001]: `0b102` isn't a valid number
+ --> literals.dat:5:18
+5 |   const binary = 0b102;
+  |                  ^^^^^ `2` isn't a binary digit
+
+error[E0001]: `0xfg` isn't a valid number
+ --> literals.dat:6:15
+6 |   const hex = 0xfg;
+  |               ^^^^ `g` isn't a hexadecimal digit
+3 errors

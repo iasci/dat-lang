@@ -1,0 +1,23 @@
+// Default values: how many arguments a call may give, and what a default may use.
+
+function connect(host: string, port: int = 5432, label: string = host): string {
+  return `${label} at ${host}:${port}`;
+}
+
+function window(start: int = end - 10, end: int = 10): int {
+  return end - start;
+}
+
+function between(low: int = 0, high: int): bool {
+  return low < high;
+}
+
+function wrong(x: int = "zero"): int {
+  return x;
+}
+
+function main(): void {
+  print(connect());
+  print(connect("db", 1, "main", true));
+  print(window(), between(1, 2), wrong());
+}

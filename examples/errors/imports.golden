@@ -1,0 +1,160 @@
+# Golden results for imports.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E1703]: an import path starts with `./`, `../` or `@`
+ --> imports.dat:4:20
+4 | import { PI } from "math";
+  |                    ^^^^^^ file paths start with `./` or `../`, and the standard library with `@dat/`
+fix: import `@dat/math` from the standard library
+4 | import { PI } from "@dat/math";
+
+error[E1401]: floor is not defined
+  --> imports.dat:11:9
+11 |   print(floor(area(2.0)), sqrt(16.0));
+   |         ^^^^^ `floor` comes from `@dat/math`
+fix: import `floor`, `sqrt` from `@dat/math`
+ 4 | import { PI, floor, sqrt } from "math";
+
+error[E1401]: sqrt is not defined
+  --> imports.dat:11:27
+11 |   print(floor(area(2.0)), sqrt(16.0));
+   |                           ^^^^ `sqrt` comes from `@dat/math`; the fix on line 11 imports it
+3 errors, 2 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E1703]: an import path starts with `./`, `../` or `@`
+ --> imports.dat:4:20
+4 | import { PI } from "math";
+  |                    ^^^^^^ file paths start with `./` or `../`, and the standard library with `@dat/`
+fix: import `@dat/math` from the standard library
+4 | import { PI } from "@dat/math";
+
+error[E1401]: floor is not defined
+  --> imports.dat:11:9
+11 |   print(floor(area(2.0)), sqrt(16.0));
+   |         ^^^^^ `floor` comes from `@dat/math`
+fix: import `floor`, `sqrt` from `@dat/math`
+ 4 | import { PI, floor, sqrt } from "math";
+
+error[E1401]: sqrt is not defined
+  --> imports.dat:11:27
+11 |   print(floor(area(2.0)), sqrt(16.0));
+   |                           ^^^^ `sqrt` comes from `@dat/math`; the fix on line 11 imports it
+3 errors, 2 fixable with dat fix
+
+=== check --json
+status: 1
+--- stderr
+{
+  "schemaVersion": 1,
+  "diagnostics": [
+    {
+      "code": "E1703",
+      "severity": "error",
+      "message": "an import path starts with `./`, `../` or `@`",
+      "file": "imports.dat",
+      "span": {
+        "byteStart": 163,
+        "byteEnd": 169,
+        "line": 4,
+        "col": 20,
+        "endLine": 4,
+        "endCol": 26
+      },
+      "labels": [
+        {
+          "message": "file paths start with `./` or `../`, and the standard library with `@dat/`"
+        }
+      ],
+      "fixes": [
+        {
+          "title": "import `@dat/math` from the standard library",
+          "applicability": "safe",
+          "isPreferred": true,
+          "edits": [
+            {
+              "file": "imports.dat",
+              "byteStart": 163,
+              "byteEnd": 169,
+              "before": "\"math\"",
+              "after": "\"@dat/math\""
+            }
+          ]
+        }
+      ],
+      "rendered": "error[E1703]: an import path starts with `./`, `../` or `@`\n --> imports.dat:4:20\n4 | import { PI } from \"math\";\n  |                    ^^^^^^ file paths start with `./` or `../`, and the standard library with `@dat/`\nfix: import `@dat/math` from the standard library\n4 | import { PI } from \"@dat/math\";\n"
+    },
+    {
+      "code": "E1401",
+      "severity": "error",
+      "message": "floor is not defined",
+      "file": "imports.dat",
+      "span": {
+        "byteStart": 261,
+        "byteEnd": 266,
+        "line": 11,
+        "col": 9,
+        "endLine": 11,
+        "endCol": 14
+      },
+      "labels": [
+        {
+          "message": "`floor` comes from `@dat/math`"
+        }
+      ],
+      "fixes": [
+        {
+          "title": "import `floor`, `sqrt` from `@dat/math`",
+          "applicability": "safe",
+          "isPreferred": true,
+          "edits": [
+            {
+              "file": "imports.dat",
+              "byteStart": 155,
+              "byteEnd": 155,
+              "before": "",
+              "after": ", floor, sqrt"
+            }
+          ]
+        }
+      ],
+      "rendered": "error[E1401]: floor is not defined\n  --> imports.dat:11:9\n11 |   print(floor(area(2.0)), sqrt(16.0));\n   |         ^^^^^ `floor` comes from `@dat/math`\nfix: import `floor`, `sqrt` from `@dat/math`\n 4 | import { PI, floor, sqrt } from \"math\";\n"
+    },
+    {
+      "code": "E1401",
+      "severity": "error",
+      "message": "sqrt is not defined",
+      "file": "imports.dat",
+      "span": {
+        "byteStart": 279,
+        "byteEnd": 283,
+        "line": 11,
+        "col": 27,
+        "endLine": 11,
+        "endCol": 31
+      },
+      "labels": [
+        {
+          "message": "`sqrt` comes from `@dat/math`; the fix on line 11 imports it"
+        }
+      ],
+      "fixes": [],
+      "rendered": "error[E1401]: sqrt is not defined\n  --> imports.dat:11:27\n11 |   print(floor(area(2.0)), sqrt(16.0));\n   |                           ^^^^ `sqrt` comes from `@dat/math`; the fix on line 11 imports it\n"
+    }
+  ],
+  "summary": {
+    "errors": 3,
+    "warnings": 0,
+    "fixable": 2
+  }
+}
+
+=== run (fixed)
+status: 0
+--- stdout
+12 4.0

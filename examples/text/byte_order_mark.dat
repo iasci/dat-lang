@@ -1,0 +1,5 @@
+﻿// This file starts with a UTF-8 byte order mark, which some editors write.
+
+function main(): void {
+  print("read past the mark");
+}

@@ -3,3 +3,7 @@
 # The block id is the spec file and the line of the block's opening fence, so
 # editing the spec above a block makes its prelude stale, loudly.
 03-operators.md:43 const name = "Ada";
+03-operators.md:22 const low = 2;
+03-operators.md:22 const high = 9;
+07-control-flow.md:7 const x = 5;
+07-control-flow.md:24 const x = 5;

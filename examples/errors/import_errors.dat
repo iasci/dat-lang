@@ -1,0 +1,21 @@
+// Imports this milestone can't read are reported once, and their names
+// aren't reported again where they're used.
+
+import { pi, Clamp, flor } from "@dat/math";
+import { taskGroup } from "@dat/tasks";
+import { Vector } from "./vector.dat";
+import { connect } from "@acme/postgres";
+import * as math from "@dat/math";
+import { floor, floor } from "@dat/math";
+import { sqrt as root } from "@std/math";
+import { E } from "@dat/maths";
+
+function main(): void {
+  print(pi, Clamp, taskGroup, Vector, connect);
+  print(math, math.clamp(1), Math.max(1, 2));
+  print(floor(2.5), root(4), E);
+  floor = 1;
+  print(math.pi, math(2), math.max("a", 1, "b"), math.PI(1));
+}
+
+import { sqrt } from "@dat/math";

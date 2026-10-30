@@ -1,0 +1,110 @@
+# Golden results for first_import.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E1401]: round is not defined
+ --> first_import.dat:4:9
+4 |   print(round(2.5), E);
+  |         ^^^^^ `round` comes from `@dat/math`
+fix: import `round`, `E` from `@dat/math`
+3 | import { round, E } from "@dat/math";
+
+error[E1401]: E is not defined
+ --> first_import.dat:4:21
+4 |   print(round(2.5), E);
+  |                     ^ `E` comes from `@dat/math`; the fix on line 4 imports it
+2 errors, 1 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E1401]: round is not defined
+ --> first_import.dat:4:9
+4 |   print(round(2.5), E);
+  |         ^^^^^ `round` comes from `@dat/math`
+fix: import `round`, `E` from `@dat/math`
+3 | import { round, E } from "@dat/math";
+
+error[E1401]: E is not defined
+ --> first_import.dat:4:21
+4 |   print(round(2.5), E);
+  |                     ^ `E` comes from `@dat/math`; the fix on line 4 imports it
+2 errors, 1 fixable with dat fix
+
+=== check --json
+status: 1
+--- stderr
+{
+  "schemaVersion": 1,
+  "diagnostics": [
+    {
+      "code": "E1401",
+      "severity": "error",
+      "message": "round is not defined",
+      "file": "first_import.dat",
+      "span": {
+        "byteStart": 97,
+        "byteEnd": 102,
+        "line": 4,
+        "col": 9,
+        "endLine": 4,
+        "endCol": 14
+      },
+      "labels": [
+        {
+          "message": "`round` comes from `@dat/math`"
+        }
+      ],
+      "fixes": [
+        {
+          "title": "import `round`, `E` from `@dat/math`",
+          "applicability": "safe",
+          "isPreferred": true,
+          "edits": [
+            {
+              "file": "first_import.dat",
+              "byteStart": 65,
+              "byteEnd": 65,
+              "before": "",
+              "after": "import { round, E } from \"@dat/math\";\n\n"
+            }
+          ]
+        }
+      ],
+      "rendered": "error[E1401]: round is not defined\n --> first_import.dat:4:9\n4 |   print(round(2.5), E);\n  |         ^^^^^ `round` comes from `@dat/math`\nfix: import `round`, `E` from `@dat/math`\n3 | import { round, E } from \"@dat/math\";\n"
+    },
+    {
+      "code": "E1401",
+      "severity": "error",
+      "message": "E is not defined",
+      "file": "first_import.dat",
+      "span": {
+        "byteStart": 109,
+        "byteEnd": 110,
+        "line": 4,
+        "col": 21,
+        "endLine": 4,
+        "endCol": 22
+      },
+      "labels": [
+        {
+          "message": "`E` comes from `@dat/math`; the fix on line 4 imports it"
+        }
+      ],
+      "fixes": [],
+      "rendered": "error[E1401]: E is not defined\n --> first_import.dat:4:21\n4 |   print(round(2.5), E);\n  |                     ^ `E` comes from `@dat/math`; the fix on line 4 imports it\n"
+    }
+  ],
+  "summary": {
+    "errors": 2,
+    "warnings": 0,
+    "fixable": 1
+  }
+}
+
+=== run (fixed)
+status: 0
+--- stdout
+3 2.718281828459045

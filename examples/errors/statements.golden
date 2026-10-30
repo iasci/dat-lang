@@ -25,39 +25,87 @@ error[E0201]: `limit` is const and can't be reassigned
 fix (review): declare it with `let`
 17 |   let limit = 10;
 
+error[E1402]: limit is already declared
+  --> statements.dat:19:9
+19 |   const limit = 30;
+   |         ^^^^^ declared earlier in this scope
+
 error[E0303]: ++ is a statement
-  --> statements.dat:20:11
-20 |   let j = i++;
+  --> statements.dat:21:11
+21 |   let j = i++;
    |           ^^^ `++` can't be used inside an expression
 fix: move `i++` into its own statement
-20 |   let j = i; i++;
+21 |   let j = i; i++;
 
 error[E0304]: no prefix form: write `i++`
-  --> statements.dat:21:3
-21 |   ++i;
+  --> statements.dat:22:3
+22 |   ++i;
    |   ^^^ `++` goes after the variable
 fix: use `i++`
-21 |   i++;
+22 |   i++;
 
 error[E0750]: `continue` outside a loop
-  --> statements.dat:22:3
-22 |   continue;
+  --> statements.dat:23:3
+23 |   continue;
    |   ^^^^^^^^^ there's no loop to leave here
 
 error[E0204]: no type and no value
-  --> statements.dat:23:3
-23 |   let x;
+  --> statements.dat:24:3
+24 |   let x;
    |   ^^^^^^ dat can't tell what type `x` has
 fix (review): give it a value
-23 |   let x = _;
+24 |   let x = _;
 
 error[E0205]: const must be initialized
-  --> statements.dat:24:3
-24 |   const y: int;
+  --> statements.dat:25:3
+25 |   const y: int;
    |   ^^^^^^^^^^^^^
 fix (review): give it a value
-24 |   const y: int = _;
-8 errors, 2 fixable with dat fix
+25 |   const y: int = _;
+
+error[E0305]: `total == 5` has no effect
+  --> statements.dat:31:3
+31 |   total == 5;
+   |   ^^^^^^^^^^ a statement must do something, such as assign, call or return
+fix (review): assign with `=`
+31 |   total = 5;
+
+error[E0305]: `cap == 4` has no effect
+  --> statements.dat:32:3
+32 |   cap == 4;
+   |   ^^^^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `total == total` has no effect
+  --> statements.dat:33:3
+33 |   total == total;
+   |   ^^^^^^^^^^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `total` has no effect
+  --> statements.dat:34:3
+34 |   total;
+   |   ^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `-total` has no effect
+  --> statements.dat:35:3
+35 |   -total;
+   |   ^^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `total + 1 < 5` has no effect
+  --> statements.dat:36:3
+36 |   total + 1 < 5;
+   |   ^^^^^^^^^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `total` has no effect
+  --> statements.dat:37:8
+37 |   for (total; total < 3; total++) {
+   |        ^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+16 errors, 2 fixable with dat fix
 
 === run
 status: 2
@@ -83,36 +131,84 @@ error[E0201]: `limit` is const and can't be reassigned
 fix (review): declare it with `let`
 17 |   let limit = 10;
 
+error[E1402]: limit is already declared
+  --> statements.dat:19:9
+19 |   const limit = 30;
+   |         ^^^^^ declared earlier in this scope
+
 error[E0303]: ++ is a statement
-  --> statements.dat:20:11
-20 |   let j = i++;
+  --> statements.dat:21:11
+21 |   let j = i++;
    |           ^^^ `++` can't be used inside an expression
 fix: move `i++` into its own statement
-20 |   let j = i; i++;
+21 |   let j = i; i++;
 
 error[E0304]: no prefix form: write `i++`
-  --> statements.dat:21:3
-21 |   ++i;
+  --> statements.dat:22:3
+22 |   ++i;
    |   ^^^ `++` goes after the variable
 fix: use `i++`
-21 |   i++;
+22 |   i++;
 
 error[E0750]: `continue` outside a loop
-  --> statements.dat:22:3
-22 |   continue;
+  --> statements.dat:23:3
+23 |   continue;
    |   ^^^^^^^^^ there's no loop to leave here
 
 error[E0204]: no type and no value
-  --> statements.dat:23:3
-23 |   let x;
+  --> statements.dat:24:3
+24 |   let x;
    |   ^^^^^^ dat can't tell what type `x` has
 fix (review): give it a value
-23 |   let x = _;
+24 |   let x = _;
 
 error[E0205]: const must be initialized
-  --> statements.dat:24:3
-24 |   const y: int;
+  --> statements.dat:25:3
+25 |   const y: int;
    |   ^^^^^^^^^^^^^
 fix (review): give it a value
-24 |   const y: int = _;
-8 errors, 2 fixable with dat fix
+25 |   const y: int = _;
+
+error[E0305]: `total == 5` has no effect
+  --> statements.dat:31:3
+31 |   total == 5;
+   |   ^^^^^^^^^^ a statement must do something, such as assign, call or return
+fix (review): assign with `=`
+31 |   total = 5;
+
+error[E0305]: `cap == 4` has no effect
+  --> statements.dat:32:3
+32 |   cap == 4;
+   |   ^^^^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `total == total` has no effect
+  --> statements.dat:33:3
+33 |   total == total;
+   |   ^^^^^^^^^^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `total` has no effect
+  --> statements.dat:34:3
+34 |   total;
+   |   ^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `-total` has no effect
+  --> statements.dat:35:3
+35 |   -total;
+   |   ^^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `total + 1 < 5` has no effect
+  --> statements.dat:36:3
+36 |   total + 1 < 5;
+   |   ^^^^^^^^^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+
+error[E0305]: `total` has no effect
+  --> statements.dat:37:8
+37 |   for (total; total < 3; total++) {
+   |        ^^^^^ a statement must do something, such as assign, call or return
+fix (review): remove the statement
+16 errors, 2 fixable with dat fix

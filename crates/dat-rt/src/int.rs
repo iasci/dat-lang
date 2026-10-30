@@ -21,14 +21,14 @@ pub fn try_mul(a: i64, b: i64) -> Result<i64, Box<DatError>> {
     a.checked_mul(b).ok_or_else(|| DatError::int_overflow(a, "*", b))
 }
 
-/// `%` keeps the sign of the left operand. `int.MIN % -1` overflows; the spec
-/// doesn't settle it yet (owner question 9), so it throws.
+/// `%` keeps the sign of the left operand. `int.MIN % -1` is `0`: the
+/// result fits, though Rust's checked remainder reports an overflow.
 #[inline]
 pub fn try_rem(a: i64, b: i64) -> Result<i64, Box<DatError>> {
     if b == 0 {
         return Err(DatError::rem_by_zero(a));
     }
-    a.checked_rem(b).ok_or_else(|| DatError::int_overflow(a, "%", b))
+    Ok(a.wrapping_rem(b))
 }
 
 #[inline]
@@ -88,5 +88,6 @@ mod tests {
         assert_eq!(try_sub(i64::MIN, 1).unwrap_err().message, "int overflow: -9223372036854775808 - 1");
         assert_eq!(try_add(i64::MIN, -1).unwrap_err().message, "int overflow: -9223372036854775808 + -1");
         assert_eq!(try_rem(-7, 3).unwrap(), -1);
+        assert_eq!(try_rem(i64::MIN, -1).unwrap(), 0);
     }
 }

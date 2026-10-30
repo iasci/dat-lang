@@ -1,0 +1,16 @@
+// Mixing ints and floats: an int never turns into a float unasked (§01, §03).
+
+function main(): void {
+  let total = 0;
+  total /= 4;
+  let count: int = 10;
+  count += 0.5;
+  const n: int = 7 / 2;
+  let x = 1.5;
+  x++;
+  print("a" + 1.5);
+  const big = 9223372036854775808;
+  const huge = 1e400;
+  const smallest = -9223372036854775808;
+  print(smallest, -"text");
+}

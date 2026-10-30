@@ -120,6 +120,7 @@ pub fn no_stack_guard() -> bool {
 fn rust_type(t: Type) -> &'static str {
     match t {
         Type::Int => "i64",
+        Type::Float => "f64",
         Type::Bool => "bool",
         Type::Str => "dat_rt::Str",
         Type::Void => "()",
@@ -134,7 +135,45 @@ fn join_capacity(parts: &[&ir::Expr]) -> usize {
 }
 
 fn is_copy(t: Type) -> bool {
-    matches!(t, Type::Int | Type::Bool | Type::Void)
+    matches!(t, Type::Int | Type::Float | Type::Bool | Type::Void)
+}
+
+/// A float as a Rust literal that reads back as the same number. Literals
+/// are finite; the checker reports any that isn't.
+fn float_literal(x: f64) -> String {
+    if x.is_nan() {
+        "f64::NAN".to_string()
+    } else if x.is_infinite() {
+        if x > 0.0 { "f64::INFINITY" } else { "f64::NEG_INFINITY" }.to_string()
+    } else if x.is_sign_negative() {
+        format!("({x:?}f64)")
+    } else {
+        format!("{x:?}f64")
+    }
+}
+
+/// The comparison `a op b` of operands of types `lt` and `rt`. An `int`
+/// and a `float` compare exactly, through dat-rt.
+fn compare_code(op: ir::CmpOp, lt: Type, rt: Type, a: &str, b: &str) -> String {
+    let cmp = match op {
+        ir::CmpOp::Lt => "Lt",
+        ir::CmpOp::Le => "Le",
+        ir::CmpOp::Gt => "Gt",
+        ir::CmpOp::Ge => "Ge",
+        ir::CmpOp::Eq => "Eq",
+        ir::CmpOp::Ne => "Ne",
+    };
+    match (lt, rt) {
+        (Type::Int, Type::Float) => format!("dat_rt::num::holds(dat_rt::num::Cmp::{cmp}, dat_rt::num::cmp_int_float({a}, {b}))"),
+        (Type::Float, Type::Int) => format!("dat_rt::num::holds(dat_rt::num::Cmp::{cmp}, dat_rt::num::cmp_float_int({a}, {b}))"),
+        _ => format!("({a} {} {b})", op.symbol()),
+    }
+}
+
+/// The name of the function that calls `id` with only its first `given`
+/// arguments, working out the defaults of the others.
+fn defaulted_name(p: &ir::Program, id: ir::FuncId, given: usize) -> String {
+    format!("{}_with{given}", fn_name(p, id))
 }
 
 /// Tests are left out unless the crate runs them, as in production builds.
@@ -147,6 +186,11 @@ fn emit_program(index: usize, p: &ir::Program, with_tests: bool) -> String {
         }
         funcs.push('\n');
         funcs.push_str(&g.function(ir::FuncId(i as u32), f));
+        let first = f.params as usize - f.defaults.len();
+        for given in first..f.params as usize {
+            funcs.push('\n');
+            funcs.push_str(&g.defaulted(ir::FuncId(i as u32), f, given));
+        }
     }
     let mut out = String::new();
     let _ = writeln!(out, "mod p{index} {{\n    pub const FILE: &str = {:?};", p.file);
@@ -242,6 +286,37 @@ impl<'p> Gen<'p> {
             Type::Void => {}
             _ => s.push_str("    dat_rt::unreachable()\n"),
         }
+        s.push_str("}\n");
+        s
+    }
+
+    /// The function a call that gives only `given` arguments goes to. It
+    /// works out the missing ones from their defaults, then calls `f`. Its
+    /// call of `f` is no site, so it never shows in a trace: an error in `f`
+    /// passes it unseen, and one in a default is traced to `f`, as in the
+    /// interpreter.
+    fn defaulted(&mut self, id: ir::FuncId, f: &ir::Function, given: usize) -> String {
+        self.func = f.name.clone();
+        let params: Vec<String> =
+            (0..given).map(|i| format!("{}: {}", self.local(f, ir::LocalId(i as u32)), rust_type(f.locals[i].ty))).collect();
+        let ret = match f.ret {
+            Type::Void => String::new(),
+            t => format!(" -> {}", rust_type(t)),
+        };
+        let mut s = String::new();
+        let _ = writeln!(s, "pub fn {}({}){ret} {{", defaulted_name(self.p, id, given), params.join(", "));
+        let first = f.params as usize - f.defaults.len();
+        // A default that calls can recurse without ever entering `f`, as in
+        // `d: int = f(n + 1)`, so the wrapper needs the stack check too.
+        if f.recursive && !no_stack_guard() && f.defaults[given - first..].iter().any(expr_calls) {
+            s.push_str("    dat_rt::stack_check(&super::STACK_LIMIT);\n");
+        }
+        for i in given..f.params as usize {
+            let v = self.expr(f, &f.defaults[i - first]);
+            let _ = writeln!(s, "    let {}: {} = {v};", self.local(f, ir::LocalId(i as u32)), rust_type(f.locals[i].ty));
+        }
+        let args: Vec<String> = (0..f.params).map(|i| self.local(f, ir::LocalId(i))).collect();
+        let _ = writeln!(s, "    {}({})", fn_name(self.p, id), args.join(", "));
         s.push_str("}\n");
         s
     }
@@ -477,8 +552,10 @@ impl<'p> Gen<'p> {
 
     fn expr(&mut self, f: &ir::Function, e: &ir::Expr) -> String {
         match &e.kind {
+            ExprKind::Int(i64::MIN) => "i64::MIN".to_string(),
             ExprKind::Int(n) if *n < 0 => format!("({n}i64)"),
             ExprKind::Int(n) => format!("{n}i64"),
+            ExprKind::Float(x) => float_literal(*x),
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Str(s) => format!("dat_rt::Str::new({s:?})"),
             ExprKind::Local(l) => {
@@ -488,7 +565,29 @@ impl<'p> Gen<'p> {
             ExprKind::Call { func, args, loc } => {
                 let (m, _) = self.site(*loc);
                 let vals: Vec<String> = args.iter().map(|a| self.expr(f, a)).collect();
-                format!("{m}{}({})", fn_name(self.p, *func), vals.join(", "))
+                let callee = if args.len() < self.p.func(*func).params as usize {
+                    defaulted_name(self.p, *func, args.len())
+                } else {
+                    fn_name(self.p, *func)
+                };
+                format!("{m}{callee}({})", vals.join(", "))
+            }
+            ExprKind::FloatArith { op, lhs, rhs } => {
+                let (a, b) = (self.expr(f, lhs), self.expr(f, rhs));
+                format!("({a} {} {b})", op.symbol())
+            }
+            ExprKind::FloatNeg(a) => format!("(-{})", self.expr(f, a)),
+            ExprKind::Builtin { op, args, loc } => {
+                let mut vals: Vec<String> =
+                    args.iter().zip(op.sig().0).map(|(a, t)| if *t == Type::Str { self.str_ref(f, a) } else { self.expr(f, a) }).collect();
+                let path = format!("dat_rt::{}::{}", op.rt_module(), op.rt_name());
+                if op.throws() {
+                    let (m, l) = self.site(*loc);
+                    vals.push(l);
+                    format!("{m}{path}({})", vals.join(", "))
+                } else {
+                    format!("{path}({})", vals.join(", "))
+                }
             }
             ExprKind::IntArith { op, lhs, rhs, loc } => {
                 let name = match op {
@@ -512,7 +611,7 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Compare { op, lhs, rhs } => {
                 let (a, b) = (self.expr(f, lhs), self.expr(f, rhs));
-                format!("({a} {} {b})", op.symbol())
+                compare_code(*op, lhs.ty, rhs.ty, &a, &b)
             }
             ExprKind::Not(a) => format!("(!{})", self.expr(f, a)),
             ExprKind::And(a, b) => format!("({} && {})", self.expr(f, a), self.expr(f, b)),
@@ -526,6 +625,7 @@ impl<'p> Gen<'p> {
                 for p in parts {
                     let _ = match &p.kind {
                         ExprKind::ToStr(a) if a.ty == Type::Int => write!(s, "__j.push_int({}); ", self.expr(f, a)),
+                        ExprKind::ToStr(a) if a.ty == Type::Float => write!(s, "__j.push_float({}); ", self.expr(f, a)),
                         ExprKind::ToStr(a) if a.ty == Type::Bool => write!(s, "__j.push_bool({}); ", self.expr(f, a)),
                         _ => write!(s, "__j.push_str({}); ", self.str_ref(f, p)),
                     };
@@ -537,6 +637,7 @@ impl<'p> Gen<'p> {
                 let v = self.expr(f, a);
                 match a.ty {
                     Type::Int => format!("dat_rt::int_to_str({v})"),
+                    Type::Float => format!("dat_rt::float_to_str({v})"),
                     Type::Bool => format!("dat_rt::bool_to_str({v})"),
                     Type::Error(_) => format!("{v}.to_str()"),
                     _ => v,
@@ -573,12 +674,17 @@ impl<'p> Gen<'p> {
             ir::AssertCond::Compare { op, lhs, rhs } => {
                 let (x, y) = (self.expr(f, lhs), self.expr(f, rhs));
                 let _ = write!(s, "let __l = {x}; let __r = {y}; ");
-                let debug = |v: &str| match lhs.ty {
+                let debug = |v: &str, t: Type| match t {
                     Type::Int => format!("dat_rt::debug_int({v})"),
+                    Type::Float => format!("dat_rt::debug_float({v})"),
                     Type::Bool => format!("dat_rt::debug_bool({v})"),
                     _ => format!("dat_rt::debug_str({v}.as_str())"),
                 };
-                (format!("(__l {} __r)", op.symbol()), format!("Some(({}, {}))", debug("__l"), debug("__r")))
+                let cond = match lhs.ty {
+                    Type::Str => format!("(__l.as_str() {} __r.as_str())", op.symbol()),
+                    _ => compare_code(*op, lhs.ty, rhs.ty, "__l", "__r"),
+                };
+                (cond, format!("Some(({}, {}))", debug("__l", lhs.ty), debug("__r", rhs.ty)))
             }
         };
         let msg = match &a.message {
@@ -622,12 +728,16 @@ fn block_calls(b: &[Stmt]) -> bool {
 fn expr_calls(e: &ir::Expr) -> bool {
     match &e.kind {
         ExprKind::Call { .. } => true,
-        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::Str(_) | ExprKind::Local(_) => false,
-        ExprKind::IntArith { lhs, rhs, .. } | ExprKind::Compare { lhs, rhs, .. } => expr_calls(lhs) || expr_calls(rhs),
+        ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Str(_) | ExprKind::Local(_) => false,
+        ExprKind::IntArith { lhs, rhs, .. } | ExprKind::FloatArith { lhs, rhs, .. } | ExprKind::Compare { lhs, rhs, .. } => {
+            expr_calls(lhs) || expr_calls(rhs)
+        }
+        ExprKind::Builtin { args, .. } => args.iter().any(expr_calls),
         ExprKind::And(a, b) | ExprKind::Or(a, b) => expr_calls(a) || expr_calls(b),
         ExprKind::Cond { cond, then, els } => expr_calls(cond) || expr_calls(then) || expr_calls(els),
         ExprKind::Concat(parts) => parts.iter().any(expr_calls),
         ExprKind::IntNeg { arg: a, .. }
+        | ExprKind::FloatNeg(a)
         | ExprKind::Not(a)
         | ExprKind::ToStr(a)
         | ExprKind::ErrorMessage(a)

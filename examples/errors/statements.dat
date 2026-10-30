@@ -16,10 +16,25 @@ function report(n: int): void {
 function main(): void {
   const limit = 10;
   limit = 20;
+  const limit = 30;
   let i = 0;
   let j = i++;
   ++i;
   continue;
   let x;
   const y: int;
+}
+
+function no_effect(): void {
+  let total = 0;
+  const cap = 3;
+  total == 5;
+  cap == 4;
+  total == total;
+  total;
+  -total;
+  total + 1 < 5;
+  for (total; total < 3; total++) {
+    print(total);
+  }
 }

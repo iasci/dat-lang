@@ -28,7 +28,7 @@ Edge cases:
 - `int` overflow throws a `RangeError`: `9223372036854775807 + 1` doesn't wrap around.
 - `int % 0` throws a `RangeError`.
 - Float division by zero follows IEEE 754 and produces `Infinity`, `-Infinity` or `NaN`, so `1 / 0` is `Infinity`.
-- `%` keeps the sign of the left operand: `-7 % 3` is `-1`.
+- `%` keeps the sign of the left operand: `-7 % 3` is `-1`. The smallest `int` `% -1` is `0`, which fits, so it doesn't throw.
 
 Arithmetic needs numbers on both sides:
 

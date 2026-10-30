@@ -1,0 +1,30 @@
+// `@dat/math`: the methods on numbers as functions, by name or through a
+// namespace, with the same results as the methods (§04).
+
+import { PI, E, abs, min, max, floor, ceil, round, trunc, sqrt, pow } from "@dat/math";
+import * as math from "@dat/math";
+
+function circle(radius: float): float {
+  return math.PI * radius * radius;
+}
+
+function main(): void {
+  print(PI, E, math.PI == PI, circle(2.0));
+  print(abs(-7), abs(-2.5), math.abs(-7) == (-7).abs());
+  print(min(3, 1, 2), max(3, 1, 2), min(3, 1.5), max(1, 2, 2.5), max(4), min(-0.0, 0.0));
+  print(floor(7 / 2), floor(-7 / 2), math.floor(7 / 2) == (7 / 2).floor(), floor(2.7), floor(5));
+  print(ceil(7 / 2), ceil(2.1), round(-5 / 2), round(-2.5), trunc(-7 / 2), trunc(-2.7));
+  print(sqrt(16), sqrt(2.0), math.sqrt(1000) == 1000.sqrt(), pow(2, 10), pow(2, 0.5), pow(2.0, 3), math.pow(10, 3) == 10.pow(3));
+  const big = 9007199254740993;
+  print(floor(big / 1), floor(big), trunc(big));
+  try {
+    print(floor(0.0 / 0.0));
+  } catch (e: RangeError) {
+    print(e.toString());
+  }
+  try {
+    print(math.pow(10, 19));
+  } catch (e: RangeError) {
+    print(e.toString());
+  }
+}

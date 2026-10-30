@@ -1,0 +1,24 @@
+# Golden results for defaults.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 1
+--- stdout
+localhost:5432 (port 5432)
+localhost:6543 (port 6543)
+primary (port 1)
+  default for end
+3
+2
+6
+3.0 6.0
+5 5
+25 1
+caught StackOverflowError: too many nested calls
+--- stderr
+RangeError: int division by zero: (100 / 0).floor()
+  at checked (defaults.dat:22:39)
+  at main (defaults.dat:54:9)

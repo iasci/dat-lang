@@ -1,0 +1,34 @@
+# Golden results for number_methods.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 1
+--- stdout
+7 -2 3 31.622776601683793 NaN 1000 -9223372036854775808 1 7.0
+42 -7!
+9223372036854776000.0 9007199254740992.0
+2 -3 3 -2 -9 9
+3 -2 0 0 2
+2.5 4.0 NaN 1.4142135623730951 1024.0 0.5
+1.5 2.5 NaN 0.0 -0.0
+3.14 0.13 -0.13 3 1.00 20 1.000
+NaN Infinity true false 2.5
+3 -4 4 -3 4 -3 -3
+9007199254740993 9007199254740993 4611686018427387904 -3074457345618258602
+6 7
+RangeError: int overflow: (-9223372036854775808).abs()
+RangeError: int overflow: 10.pow(19)
+RangeError: negative exponent: 2.pow(-1)
+RangeError: can't convert NaN to an int: NaN.floor()
+RangeError: int overflow: 1e300.round()
+RangeError: int overflow: Infinity.toInt()
+RangeError: int overflow: (-10000000000000000000.0).ceil()
+RangeError: toFixed digits must be from 0 to 100: 3.14.toFixed(101)
+RangeError: int division by zero: (7 / 0).floor()
+RangeError: int overflow: (-9223372036854775808 / -1).toInt()
+--- stderr
+RangeError: int overflow: 9223372036854776000.0.floor()
+  at main (number_methods.dat:66:9)

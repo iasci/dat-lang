@@ -26,6 +26,10 @@ pub fn dump(p: &Program) -> String {
             f.loc.line,
             f.loc.col
         );
+        let first_default = f.params as usize - f.defaults.len();
+        for (j, d) in f.defaults.iter().enumerate() {
+            let _ = writeln!(out, "  default %{} = {}", first_default + j, expr(d));
+        }
         for (j, l) in f.locals.iter().enumerate().skip(f.params as usize) {
             let _ = writeln!(out, "  local %{j} {}: {}{}", l.name, l.ty.name(), if l.reassigned { " mut" } else { "" });
         }
@@ -121,6 +125,7 @@ fn at(loc: &Loc) -> String {
 fn expr(e: &Expr) -> String {
     match &e.kind {
         ExprKind::Int(n) => n.to_string(),
+        ExprKind::Float(x) => format!("{x:?}"),
         ExprKind::Bool(b) => b.to_string(),
         ExprKind::Str(s) => format!("{s:?}"),
         ExprKind::Local(l) => format!("%{}", l.0),
@@ -138,6 +143,22 @@ fn expr(e: &Expr) -> String {
             format!("({name}.int {} {} {})", at(loc), expr(lhs), expr(rhs))
         }
         ExprKind::IntNeg { arg, loc } => format!("(neg.int {} {})", at(loc), expr(arg)),
+        ExprKind::FloatArith { op, lhs, rhs } => {
+            let name = match op {
+                FloatOp::Add => "add",
+                FloatOp::Sub => "sub",
+                FloatOp::Mul => "mul",
+                FloatOp::Div => "div",
+                FloatOp::Rem => "rem",
+            };
+            format!("({name}.float {} {})", expr(lhs), expr(rhs))
+        }
+        ExprKind::FloatNeg(a) => format!("(neg.float {})", expr(a)),
+        ExprKind::Builtin { op, args, loc } => {
+            let args: Vec<String> = args.iter().map(expr).collect();
+            let at = if op.throws() { format!(" {}", at(loc)) } else { String::new() };
+            format!("({}.{}{at} {})", op.rt_module(), op.rt_name(), args.join(" "))
+        }
         ExprKind::Compare { op, lhs, rhs } => {
             let name = match op {
                 CmpOp::Lt => "lt",

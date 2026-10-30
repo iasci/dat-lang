@@ -1,0 +1,7 @@
+// The import fix in a file without imports adds the first one.
+
+import { round, E } from "@dat/math";
+
+function main(): void {
+  print(round(2.5), E);
+}

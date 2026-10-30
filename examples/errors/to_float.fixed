@@ -1,0 +1,13 @@
+// An int where a float is expected gets `toFloat()` as its fix, which `dat fix` applies.
+
+function half(x: float): float {
+  return x / 2;
+}
+
+function main(): void {
+  const count = 3;
+  const a = 1;
+  const b = 2;
+  const sum: float = (a + b).toFloat();
+  print(half(count.toFloat()), sum);
+}

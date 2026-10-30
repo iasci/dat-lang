@@ -2,7 +2,7 @@
 
 M1 finishes the parts of dat that work on single values: numbers, text and `bool`, with the functions, control flow, built-ins and tests around them. In the [roadmap](https://claude.ai/artifact/JNuKMm6CfFmLtBKFjjF4hG) it delivers §01 (the primitive types), §02, §03, §04, §06, §07, §09, §13, §14 and §20. Lists, sets and maps come in M2; structs, nullable types and `match` in M3; declared errors in M4.
 
-M0 already built most of what the roadmap listed for M1. What's left is floats, the methods on numbers and strings, the first standard library module (`@dat/math`), default parameter values, finding every syntax error in one run, and one wrong fix. Nothing in this plan is built yet.
+M0 already built most of what the roadmap listed for M1. What's left is floats, the methods on numbers and strings, the first standard library module (`@dat/math`), default parameter values, finding every syntax error in one run, and one wrong fix. All of it is now built; [M1 status](./M1%20status.md) checks it against the exit criteria.
 
 ## Already done in M0
 

@@ -56,6 +56,11 @@ impl Join {
         crate::fmt::write_int(&mut self.0, n);
     }
 
+    /// `${x}`, the text `toString()` gives.
+    pub fn push_float(&mut self, x: f64) {
+        crate::fmt::write_float(&mut self.0, x);
+    }
+
     /// `${b}`, the text `toString()` gives.
     pub fn push_bool(&mut self, b: bool) {
         self.0.push_str(crate::fmt::bool_text(b));

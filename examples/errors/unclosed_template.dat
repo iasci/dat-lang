@@ -1,0 +1,7 @@
+// An unclosed template string is reported at its start, and an error in a
+// substitution points at the `}`, not the text after it.
+
+function main(): void {
+  print(`a ${1 + } b`);
+  print(`total: ${2}
+}

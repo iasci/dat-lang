@@ -1,0 +1,118 @@
+# Golden results for numbers.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0302]: `total` is an int, but `total / 4` is a float
+ --> numbers.dat:5:3
+5 |   total /= 4;
+  |   ^^^^^^^^^^^ `total` can't change its type
+option: round the result down
+5 |   total = (total / 4).floor();
+option: declare `total` as a float
+4 |   let total = 0.0;
+
+error[E0302]: `count` is an int, but `count + 0.5` is a float
+ --> numbers.dat:7:3
+7 |   count += 0.5;
+  |   ^^^^^^^^^^^^^ `count` can't change its type
+option: round the result down
+7 |   count = (count + 0.5).floor();
+option: declare `count` as a float
+6 |   let count: float = 10;
+
+error[E0250]: expected an int, found a float
+ --> numbers.dat:8:18
+8 |   const n: int = 7 / 2;
+  |                  ^^^^^ this is a float
+option: round it down
+8 |   const n: int = (7 / 2).floor();
+option: round it to the nearest int
+8 |   const n: int = (7 / 2).round();
+
+error[E0350]: `++` needs an int, and `x` is a float
+  --> numbers.dat:10:3
+10 |   x++;
+   |   ^
+
+error[E0301]: can't add string and float
+  --> numbers.dat:11:9
+11 |   print("a" + 1.5);
+   |         ^^^^^^^^^ `1.5` is a float
+fix: use a template string
+11 |   print(`a${1.5}`);
+
+error[E0150]: `9223372036854775808` doesn't fit in an int
+  --> numbers.dat:12:15
+12 |   const big = 9223372036854775808;
+   |               ^^^^^^^^^^^^^^^^^^^ an int is from -9223372036854775808 to 9223372036854775807
+
+error[E0150]: `1e400` is too large for a float
+  --> numbers.dat:13:16
+13 |   const huge = 1e400;
+   |                ^^^^^ a float is at most 1.7976931348623157e308
+
+error[E0350]: `-` needs a number, not a string
+  --> numbers.dat:15:19
+15 |   print(smallest, -"text");
+   |                   ^^^^^^^
+8 errors, 1 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0302]: `total` is an int, but `total / 4` is a float
+ --> numbers.dat:5:3
+5 |   total /= 4;
+  |   ^^^^^^^^^^^ `total` can't change its type
+option: round the result down
+5 |   total = (total / 4).floor();
+option: declare `total` as a float
+4 |   let total = 0.0;
+
+error[E0302]: `count` is an int, but `count + 0.5` is a float
+ --> numbers.dat:7:3
+7 |   count += 0.5;
+  |   ^^^^^^^^^^^^^ `count` can't change its type
+option: round the result down
+7 |   count = (count + 0.5).floor();
+option: declare `count` as a float
+6 |   let count: float = 10;
+
+error[E0250]: expected an int, found a float
+ --> numbers.dat:8:18
+8 |   const n: int = 7 / 2;
+  |                  ^^^^^ this is a float
+option: round it down
+8 |   const n: int = (7 / 2).floor();
+option: round it to the nearest int
+8 |   const n: int = (7 / 2).round();
+
+error[E0350]: `++` needs an int, and `x` is a float
+  --> numbers.dat:10:3
+10 |   x++;
+   |   ^
+
+error[E0301]: can't add string and float
+  --> numbers.dat:11:9
+11 |   print("a" + 1.5);
+   |         ^^^^^^^^^ `1.5` is a float
+fix: use a template string
+11 |   print(`a${1.5}`);
+
+error[E0150]: `9223372036854775808` doesn't fit in an int
+  --> numbers.dat:12:15
+12 |   const big = 9223372036854775808;
+   |               ^^^^^^^^^^^^^^^^^^^ an int is from -9223372036854775808 to 9223372036854775807
+
+error[E0150]: `1e400` is too large for a float
+  --> numbers.dat:13:16
+13 |   const huge = 1e400;
+   |                ^^^^^ a float is at most 1.7976931348623157e308
+
+error[E0350]: `-` needs a number, not a string
+  --> numbers.dat:15:19
+15 |   print(smallest, -"text");
+   |                   ^^^^^^^
+8 errors, 1 fixable with dat fix

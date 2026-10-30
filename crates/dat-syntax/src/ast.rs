@@ -19,6 +19,9 @@ pub struct Ast {
     pub items: Vec<Item>,
     pub exprs: Vec<Expr>,
     pub stmts: Vec<Stmt>,
+    /// The functions whose declarations have a syntax error, by name. The
+    /// checker treats them as declared, so their uses aren't reported too.
+    pub broken: Vec<Ident>,
 }
 
 impl Ast {
@@ -47,10 +50,44 @@ pub struct Item {
 pub enum ItemKind {
     Function(Function),
     Test(Test),
+    Import(Import),
     /// A declaration the parser recognised but skipped, such as `struct`.
     Unsupported {
         what: &'static str,
     },
+}
+
+/// `import { a, b as c } from "path";` or `import * as ns from "path";`
+#[derive(Clone, Debug)]
+pub struct Import {
+    pub kind: ImportKind,
+    /// The path, without its quotes.
+    pub path: String,
+    /// The path's string literal, quotes included.
+    pub path_span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum ImportKind {
+    /// `close` is the `}` after the names.
+    Named {
+        names: Vec<ImportName>,
+        close: Span,
+    },
+    Namespace(Ident),
+}
+
+#[derive(Clone, Debug)]
+pub struct ImportName {
+    pub name: Ident,
+    pub alias: Option<Ident>,
+}
+
+impl ImportName {
+    /// The name the importing module uses.
+    pub fn local(&self) -> &Ident {
+        self.alias.as_ref().unwrap_or(&self.name)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -180,6 +217,9 @@ pub enum StmtKind {
     Unsupported {
         what: &'static str,
     },
+    /// A statement with a syntax error, already reported. Parsing resumed
+    /// after it.
+    Error,
 }
 
 #[derive(Clone, Debug)]
@@ -319,4 +359,6 @@ pub enum ExprKind {
     Unsupported {
         what: &'static str,
     },
+    /// The value of a declaration whose syntax error is already reported.
+    Error,
 }

@@ -1,23 +1,21 @@
-// A statement may be a value that is thrown away; both modes accept it (Q16 is open).
+// A call can drop its result, and both modes still run it. A statement
+// that's only a value, with no call in it, is E0305 (examples/errors/statements.dat).
 
 function five(): int {
+  print("five");
   return 5;
 }
 
 function main(): void {
-  let x = 1;
-  const b = true;
   const s = "s";
-  x;
-  x == 1;
-  s < "t";
-  !b;
-  b && b;
-  s;
   s.toString();
+  s.toUpperCase();
   five();
-  for (x; x < 3; x++) {
-    print(x);
+  five() + 1;
+  `${five()}`;
+  five() == 5;
+  for (five(); five() < 3; five()) {
+    print("never");
   }
   print("ok");
 }

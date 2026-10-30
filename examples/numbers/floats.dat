@@ -1,0 +1,75 @@
+// Floats: literals, arithmetic, comparisons and printing (§01, §03, §04).
+
+function half(x: float): float {
+  return x / 2;
+}
+
+function one(): float {
+  return 1;
+}
+
+function main(): void {
+  // Literals, and an integer literal where a float is expected.
+  const ratio: float = 1;
+  print(3.14, 2.0, 1e9, 1_000.5, ratio, half(5), one(), -2.5);
+
+  // `/` always gives a float, and a float on either side makes the result one.
+  print(10 / 4, 10 / 5, 10 + 2.5, 10 - 0.5, 3 * 1.5, 7.5 % 2, -7.5 % 2, 10 % 2.5);
+
+  // Division by zero follows IEEE 754.
+  print(1 / 0, -1 / 0, 0 / 0, 1.0 / -0.0, 5.0 % 0.0);
+  const nan = 0.0 / 0.0;
+  print(nan == nan, nan != nan, nan < 1.0, nan >= 1.0);
+
+  // An int compares with a float by its exact value.
+  print(2 == 2.0, 3 > 2.5, 1 <= 0.5, 2.0 != 2);
+  const big = 9007199254740993;
+  print(big > 9007199254740992.0, big == 9007199254740992.0, 9223372036854775807 < 9223372036854775808.0);
+
+  // Printing: the shortest text that reads back as the same number.
+  print(0.1, 0.1 + 0.2, 100.0, 1e20, 1e21, 1.5e21, 0.000001, 1e-7, 1.5e-7, 123.456e5);
+  print(-0.0, 0.0, 1.7976931348623157e308, 5e-324, 2.0e-308);
+  const x = 0.1 + 0.7;
+  print(`x = ${x}`, x.toString(), "x = " + x.toString());
+
+  // Compound assignment.
+  let total = 0.0;
+  total += 5;
+  total *= 3;
+  total -= 0.5;
+  total /= 2;
+  total %= 4;
+  print(total);
+  let sum = 0.0;
+  for (let i = 0; i < 10; i++) {
+    sum += 0.1;
+  }
+  print(sum, sum == 1.0);
+
+  // A conditional with an int literal and a float is a float.
+  const pick = total > 1.0 ? 1 : 2.5;
+  print(pick, -pick);
+}
+
+test "float arithmetic" {
+  assert(0.1 + 0.2 != 0.3);
+  assert(10 / 4 == 2.5);
+  assert(1 / 3 * 3 == 1.0);
+  assert(-(2.5) == -2.5);
+}
+
+test "an integer literal is a float where one is expected" {
+  const ready = true;
+  const ratio: float = ready ? 1 : 2;
+  const below: float = -(3);
+  assert(ratio == 1.0);
+  assert(below == -3.0);
+}
+
+test "an int literal compares exactly" {
+  const x = 9007199254740992.0;
+  assert(x != 9007199254740993);
+  assert(x < 9007199254740993);
+  assert(x == 9007199254740992);
+  assert(x * 2 == 18014398509481984);
+}

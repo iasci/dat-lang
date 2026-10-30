@@ -1,0 +1,7 @@
+// M1's exit check, from the roadmap.
+
+test "division and remainder" {
+  assert((7 / 2).floor() == 3);
+  assert(10 / 4 == 2.5);
+  assert(-7 % 3 == -1);
+}

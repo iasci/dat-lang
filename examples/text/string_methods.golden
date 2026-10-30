@@ -1,0 +1,43 @@
+# Golden results for string_methods.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 0
+--- stdout
+6 0 false true
+true true true true false
+3 4 -1 0 6
+slice(3): [llo]
+slice(1, 3): [é]
+slice(-3): [llo]
+slice(-100, 100): [héllo]
+slice(5, 3): []
+report.pdf: [pdf]
+slice(indexOf): [llo]
+trim: [a b]
+trimStart: [a b  ]
+trimEnd: [  a b]
+upper: [STRASSE]
+lower: [àb]
+replace: [a+b-c]
+replaceAll: [a+b+c]
+replace missing: [abc]
+repeat: [ababab]
+repeat 0: []
+padStart: [007]
+padStart default: [  7]
+padEnd: [abxyx]
+padEnd short: [abcdef]
+padStart multi-byte: [éa]
+toString: [héllo]
+h é l o
+RangeError: index 2 is inside the character "é" at 1
+RangeError: index 6 out of range for length 6
+RangeError: index -1 out of range for length 6
+RangeError: slice position 2 is inside the character "é" at 1
+RangeError: slice position 2 is inside the character "é" at 1
+RangeError: repeat count can't be negative: repeat(-1)
+RangeError: string too long: 2 bytes repeated 9223372036854775807 times

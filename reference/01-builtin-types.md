@@ -109,6 +109,14 @@ null
 
 An integer literal can be used where a `float` is expected: `const ratio: float = 1;`. An `int` variable can't; convert it with `.toFloat()`.
 
+An integer literal must fit in an `int`. The smallest `int` is written with a minus sign in front of the literal:
+
+```
+const largest = 9223372036854775807;
+const smallest = -9223372036854775808;
+const tooLarge = 9223372036854775808;   // ❌ E0150: `9223372036854775808` doesn't fit in an int
+```
+
 ### String Literals
 
 Strings use double quotes. The following escape sequences are supported:

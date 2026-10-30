@@ -1,0 +1,12 @@
+// A name that @dat/math exports, used without its import, gets the import
+// as a safe fix, and so does a path that's missing `@dat/` (§17).
+
+import { PI, floor, sqrt } from "@dat/math";
+
+function area(r: float): float {
+  return PI * r * r;
+}
+
+function main(): void {
+  print(floor(area(2.0)), sqrt(16.0));
+}

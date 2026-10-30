@@ -10,6 +10,7 @@
 mod body;
 pub mod codes;
 mod module;
+mod stdlib;
 
 use dat_diag::{Diagnostic, FileId, SourceFile, SourceMap};
 
@@ -20,6 +21,7 @@ pub use module::check;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Ty {
     Int,
+    Float,
     Bool,
     Str,
     Void,
@@ -32,6 +34,7 @@ impl Ty {
     pub(crate) fn name(self) -> &'static str {
         match self {
             Ty::Int => "int",
+            Ty::Float => "float",
             Ty::Bool => "bool",
             Ty::Str => "string",
             Ty::Void => "void",
@@ -50,6 +53,7 @@ impl Ty {
     pub(crate) fn ir(self) -> dat_ir::Type {
         match self {
             Ty::Int => dat_ir::Type::Int,
+            Ty::Float => dat_ir::Type::Float,
             Ty::Bool => dat_ir::Type::Bool,
             Ty::Str => dat_ir::Type::Str,
             Ty::Void | Ty::Poison => dat_ir::Type::Void,
@@ -60,7 +64,11 @@ impl Ty {
 
     /// Has a `toString()` that templates and `print` can use.
     pub(crate) fn is_printable(self) -> bool {
-        matches!(self, Ty::Int | Ty::Bool | Ty::Str | Ty::Error(_))
+        matches!(self, Ty::Int | Ty::Float | Ty::Bool | Ty::Str | Ty::Error(_))
+    }
+
+    pub(crate) fn is_number(self) -> bool {
+        matches!(self, Ty::Int | Ty::Float)
     }
 }
 

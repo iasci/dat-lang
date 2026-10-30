@@ -3,6 +3,7 @@
 
 use crate::body::Body;
 use crate::codes;
+use crate::stdlib;
 use crate::{Options, Ty};
 use dat_diag::{Diagnostic, FileId, SourceMap, Span};
 use dat_ir as ir;
@@ -20,6 +21,8 @@ pub(crate) enum Ret {
 pub(crate) struct Sig {
     pub name: String,
     pub params: Vec<(String, Ty)>,
+    /// How many of the last parameters have default values.
+    pub defaults: usize,
     pub ret: Ret,
     /// The function or test declaration, by item index.
     pub item: usize,
@@ -37,6 +40,29 @@ pub(crate) struct Module<'a> {
     /// Each `return` with a value in `main`, and the value: when `main`
     /// doesn't return void, its fix rewrites them.
     pub main_returns: Vec<(Span, ast::ExprId)>,
+    /// The names imports declare.
+    pub imports: HashMap<String, Imported>,
+    /// Each named import's path and the `}` that ends its names, for fixes
+    /// that import one more name.
+    pub named_imports: Vec<(String, Span)>,
+    /// Where a fix inserts a new import: after the last one, or before the
+    /// first declaration.
+    pub import_at: u32,
+    /// Each E1401 whose fix imports a name: the diagnostic's index, the
+    /// module and the name.
+    pub import_fixes: Vec<(usize, &'static stdlib::StdModule, String)>,
+}
+
+/// What an imported name refers to.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Imported {
+    /// A member of a standard library module.
+    Member(&'static stdlib::StdModule, &'static stdlib::Member),
+    /// `import * as math from "@dat/math"`.
+    Namespace(&'static stdlib::StdModule),
+    /// From a module this milestone can't read, already reported, so its
+    /// uses aren't reported again.
+    Unknown,
 }
 
 /// Checks a parsed file and lowers it. Diagnostics are appended to `diags`.
@@ -50,11 +76,16 @@ pub fn check(sources: &SourceMap, ast: &Ast, opts: Options, diags: &mut Vec<Diag
         by_name: HashMap::new(),
         bodies: Vec::new(),
         main_returns: Vec::new(),
+        imports: HashMap::new(),
+        named_imports: Vec::new(),
+        import_at: 0,
+        import_fixes: Vec::new(),
     };
     m.collect();
     for id in 0..m.sigs.len() {
         m.check_function(ir::FuncId(id as u32));
     }
+    m.merge_import_fixes();
     let main = m.by_name.get("main").copied();
     // A `main` with a syntax error is dropped by the parser; don't also claim it's missing.
     let had_errors = m.diags.iter().any(|d| d.severity == dat_diag::Severity::Error);
@@ -109,11 +140,18 @@ impl<'a> Module<'a> {
     fn collect(&mut self) {
         let ast = self.ast;
         let mut test_names: HashMap<&str, Span> = HashMap::new();
+        self.import_at = self.first_declaration_line();
+        for item in &ast.items {
+            if let ItemKind::Import(imp) = &item.kind {
+                self.import(imp, item.span);
+            }
+        }
         for (i, item) in ast.items.iter().enumerate() {
             match &item.kind {
+                ItemKind::Import(_) => {}
                 ItemKind::Function(f) => {
                     let id = ir::FuncId(self.sigs.len() as u32);
-                    if self.by_name.contains_key(&f.name.name) {
+                    if self.by_name.contains_key(&f.name.name) || self.imports.contains_key(&f.name.name) {
                         self.error(codes::REDECLARED, f.name.span, format!("`{}` is already declared", f.name.name)).label =
                             Some("a module can declare each name once".into());
                     } else {
@@ -146,7 +184,8 @@ impl<'a> Module<'a> {
                         Some(t) => Ret::Known(self.resolve_type(t)),
                         None => Ret::Infer,
                     };
-                    self.sigs.push(Sig { name: f.name.name.clone(), params, ret, item: i, is_test: false });
+                    let defaults = self.default_count(f);
+                    self.sigs.push(Sig { name: f.name.name.clone(), params, defaults, ret, item: i, is_test: false });
                     self.bodies.push(None);
                 }
                 ItemKind::Test(t) => {
@@ -164,6 +203,7 @@ impl<'a> Module<'a> {
                     self.sigs.push(Sig {
                         name: format!("test {:?}", t.name),
                         params: Vec::new(),
+                        defaults: 0,
                         ret: Ret::Known(Ty::Void),
                         item: i,
                         is_test: true,
@@ -175,18 +215,195 @@ impl<'a> Module<'a> {
         }
     }
 
+    /// Where the first declaration's line starts: after the comments that
+    /// open the file.
+    fn first_declaration_line(&self) -> u32 {
+        let text = &self.src().text;
+        let start = self.ast.items.first().map_or(text.len() as u32, |i| i.span.start);
+        // After a byte order mark, if there's one: nothing goes before it.
+        let bom = if text.starts_with('\u{feff}') { 3 } else { 0 };
+        text[..start as usize].rfind('\n').map_or(bom, |i| i as u32 + 1)
+    }
+
+    /// Checks an import and declares its names (§17). Only the standard
+    /// library can be read in this milestone.
+    fn import(&mut self, imp: &ast::Import, span: Span) {
+        let text = &self.src().text;
+        let line_end = text[span.end as usize..].find('\n').map_or(text.len(), |i| span.end as usize + i + 1) as u32;
+        self.import_at = self.import_at.max(line_end);
+        let path = imp.path.as_str();
+        let mut module = stdlib::by_path(path);
+        if !path.starts_with("./") && !path.starts_with("../") && !path.starts_with('@') {
+            module = stdlib::MODULES.iter().find(|m| m.name == path);
+            let mut d = Diagnostic::error(codes::IMPORT_PATH, self.file, imp.path_span, "an import path starts with `./`, `../` or `@`")
+                .with_label("file paths start with `./` or `../`, and the standard library with `@dat/`");
+            if let Some(m) = module {
+                let edit = dat_diag::edit(self.sources, self.file, imp.path_span, format!("{:?}", m.path()));
+                d = d.with_fix(format!("import `{}` from the standard library", m.path()), dat_diag::Applicability::Safe, vec![edit]);
+            }
+            self.diags.push(d);
+        } else if let Some(name) = path.strip_prefix("@std/").or_else(|| path.strip_prefix("@dat/").filter(|_| module.is_none())) {
+            // `@std/` isn't an owner anyone can use (§17), so it means
+            // `@dat/`; and a misspelled module, such as `@dat/maths`.
+            let exact = stdlib::MODULES.iter().find(|m| m.name == name);
+            module = exact.or_else(|| stdlib::similar_module(name));
+            match module {
+                Some(m) => {
+                    let message = if path.starts_with("@std/") {
+                        "the standard library's paths start with `@dat/`".to_string()
+                    } else {
+                        format!("the standard library has no module `{path}`")
+                    };
+                    let applicability = if exact.is_some() { dat_diag::Applicability::Safe } else { dat_diag::Applicability::Review };
+                    let edit = dat_diag::edit(self.sources, self.file, imp.path_span, format!("{:?}", m.path()));
+                    let d = Diagnostic::error(codes::IMPORT_PATH, self.file, imp.path_span, message).with_fix(
+                        format!("import `{}`", m.path()),
+                        applicability,
+                        vec![edit],
+                    );
+                    self.diags.push(d);
+                }
+                None if path.starts_with("@dat/") => self.unsupported(imp.path_span, &format!("the standard library module `{path}`")),
+                None => {
+                    let d =
+                        Diagnostic::error(codes::IMPORT_PATH, self.file, imp.path_span, "the standard library's paths start with `@dat/`");
+                    self.diags.push(d);
+                }
+            }
+        } else if let Some(m) = module.filter(|m| !m.supported()) {
+            self.unsupported(imp.path_span, &format!("the standard library module `{}`", m.path()));
+        } else if module.is_none() {
+            let what = if path.starts_with("@dat/") {
+                format!("the standard library module `{path}`")
+            } else if path.starts_with('@') {
+                "packages".to_string()
+            } else {
+                "imports of files".to_string()
+            };
+            self.unsupported(imp.path_span, &what);
+        }
+        let readable = module.filter(|m| m.supported());
+        let declare = |m: &mut Self, name: &ast::Ident, what: Imported| {
+            if m.imports.contains_key(&name.name) {
+                m.error(codes::REDECLARED, name.span, format!("`{}` is already declared", name.name)).label =
+                    Some("each import needs its own name".into());
+                return;
+            }
+            m.imports.insert(name.name.clone(), what);
+        };
+        match &imp.kind {
+            ast::ImportKind::Namespace(ns) => declare(self, ns, readable.map_or(Imported::Unknown, Imported::Namespace)),
+            ast::ImportKind::Named { names, close } => {
+                if let Some(m) = module {
+                    self.named_imports.push((m.path(), *close));
+                }
+                for n in names {
+                    let member = module.and_then(|m| m.member(&n.name.name));
+                    let what = match (readable, member, module) {
+                        (Some(m), Some(x), _) => Imported::Member(m, x),
+                        (_, None, Some(m)) => {
+                            let mut d = Diagnostic::error(
+                                codes::NOT_EXPORTED,
+                                self.file,
+                                n.name.span,
+                                format!("`{}` isn't exported by `{}`", n.name.name, m.path()),
+                            );
+                            if let Some(similar) = m.similar(&n.name.name) {
+                                let edit = dat_diag::edit(self.sources, self.file, n.name.span, similar);
+                                d = d.with_fix(format!("import `{similar}`"), dat_diag::Applicability::Review, vec![edit]);
+                            }
+                            self.diags.push(d);
+                            Imported::Unknown
+                        }
+                        _ => Imported::Unknown,
+                    };
+                    declare(self, n.local(), what);
+                }
+            }
+        }
+    }
+
+    /// The edit that imports `names` from `m`: added to an import of `m`, or
+    /// as a new import.
+    pub fn import_edit(&self, m: &stdlib::StdModule, names: &[&str]) -> dat_diag::Edit {
+        let path = m.path();
+        let text = &self.src().text;
+        let list = names.join(", ");
+        let insert = |at: u32, after: String| dat_diag::edit(self.sources, self.file, Span::new(at, at), after);
+        if let Some((_, close)) = self.named_imports.iter().find(|(p, _)| *p == path) {
+            let end = text[..close.start as usize].trim_end().len() as u32;
+            let after = match text[..end as usize].chars().last() {
+                Some('{' | ',') => format!(" {list}"),
+                _ => format!(", {list}"),
+            };
+            return insert(end, after);
+        }
+        let has_imports = self.ast.items.iter().any(|i| matches!(i.kind, ItemKind::Import(_)));
+        let blank = if has_imports { "" } else { "\n" };
+        insert(self.import_at, format!("import {{ {list} }} from {path:?};\n{blank}"))
+    }
+
+    /// Fixes that each import one name from the same module would insert
+    /// at the same place, so applied together they'd conflict. The first
+    /// use's fix imports them all instead, and the others point to it.
+    fn merge_import_fixes(&mut self) {
+        let fixes = std::mem::take(&mut self.import_fixes);
+        for (k, &(first, m, _)) in fixes.iter().enumerate() {
+            if fixes[..k].iter().any(|f| std::ptr::eq(f.1, m)) {
+                continue;
+            }
+            let group: Vec<&(usize, &stdlib::StdModule, String)> = fixes.iter().filter(|f| std::ptr::eq(f.1, m)).collect();
+            if group.len() < 2 {
+                continue;
+            }
+            let mut names: Vec<&str> = Vec::new();
+            for f in &group {
+                if !names.contains(&f.2.as_str()) {
+                    names.push(&f.2);
+                }
+            }
+            let edit = self.import_edit(m, &names);
+            let (line, _) = self.src().line_col(self.diags[first].span.start);
+            let shown: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
+            let fix = &mut self.diags[first].fixes[0];
+            fix.title = format!("import {} from `{}`", shown.join(", "), m.path());
+            fix.edits = vec![edit];
+            for f in &group[1..] {
+                let d = &mut self.diags[f.0];
+                d.fixes.clear();
+                d.label = Some(format!("`{}` comes from `{}`; the fix on line {line} imports it", f.2, m.path()));
+            }
+        }
+    }
+
+    /// How many parameters at the end have defaults. A parameter without
+    /// one after one with one can never be left out, so it's an error (§06).
+    fn default_count(&mut self, f: &ast::Function) -> usize {
+        let first = f.params.iter().position(|p| p.default.is_some()).unwrap_or(f.params.len());
+        for p in &f.params[first..] {
+            if p.default.is_none() {
+                let d = Diagnostic::error(
+                    codes::DEFAULT_ORDER,
+                    self.file,
+                    p.span,
+                    format!("`{}` needs a default value, because a parameter before it has one", p.name.name),
+                )
+                .with_label("parameters with defaults go after the ones without");
+                self.diags.push(d);
+            }
+        }
+        f.params.len() - first
+    }
+
     pub fn resolve_type(&mut self, t: &ast::TypeExpr) -> Ty {
         match &t.kind {
             ast::TypeKind::Named(name) => match name.as_str() {
                 "int" => Ty::Int,
+                "float" => Ty::Float,
                 "bool" => Ty::Bool,
                 "string" => Ty::Str,
                 "void" => Ty::Void,
                 "never" => Ty::Never,
-                "float" => {
-                    self.unsupported(t.span, "floats");
-                    Ty::Poison
-                }
                 "null" => {
                     self.unsupported(t.span, "nullable types");
                     Ty::Poison
@@ -233,13 +450,16 @@ impl<'a> Module<'a> {
                     if p.is_mut {
                         self.unsupported(p.span, "`mut` parameters");
                     }
-                    if let Some(d) = p.default {
-                        self.unsupported(ast.expr(d).span, "default parameter values");
-                    }
                 }
                 let params = self.sigs[i].params.clone();
+                let first_default = params.len() - self.sigs[i].defaults;
                 let mut body = Body::new(self, id, declared, f.name.name.clone());
-                for (p, (name, ty)) in f.params.iter().zip(params) {
+                for (j, (p, (name, ty))) in f.params.iter().zip(params).enumerate() {
+                    // A default sees the parameters before it.
+                    if let (Some(d), true) = (p.default, j >= first_default) {
+                        let later = f.params[j..].iter().map(|p| p.name.name.clone()).collect();
+                        body.default_value(d, ty, later);
+                    }
                     body.declare_param(&name, ty, p.name.span);
                 }
                 body.finish_function(&f.body, f.name.span)
@@ -249,7 +469,7 @@ impl<'a> Module<'a> {
                 let body = Body::new(self, id, Some(Ty::Void), name);
                 body.finish_function(&t.body, t.name_span)
             }
-            ItemKind::Unsupported { .. } => unreachable!(),
+            ItemKind::Unsupported { .. } | ItemKind::Import(_) => unreachable!(),
         };
         let (func, ret) = f;
         self.sigs[i].ret = Ret::Known(ret);
@@ -369,6 +589,10 @@ fn mark_recursive(functions: &mut [ir::Function]) {
             for s in &f.body {
                 calls_in_stmt(s, &mut out);
             }
+            // Defaults run in the frame of the function they belong to.
+            for d in &f.defaults {
+                calls_in_expr(d, &mut out);
+            }
             out
         })
         .collect();
@@ -453,12 +677,15 @@ fn calls_in_expr(e: &ir::Expr, out: &mut Vec<usize>) {
             out.push(func.0 as usize);
             args.iter().for_each(|a| calls_in_expr(a, out));
         }
-        Int(_) | Bool(_) | Str(_) | Local(_) => {}
-        IntArith { lhs, rhs, .. } | Compare { lhs, rhs, .. } | And(lhs, rhs) | Or(lhs, rhs) => {
+        Builtin { args, .. } => args.iter().for_each(|a| calls_in_expr(a, out)),
+        Int(_) | Float(_) | Bool(_) | Str(_) | Local(_) => {}
+        IntArith { lhs, rhs, .. } | FloatArith { lhs, rhs, .. } | Compare { lhs, rhs, .. } | And(lhs, rhs) | Or(lhs, rhs) => {
             calls_in_expr(lhs, out);
             calls_in_expr(rhs, out);
         }
-        IntNeg { arg, .. } | Not(arg) | ToStr(arg) | ErrorMessage(arg) | Print(arg) | Diverge(arg) => calls_in_expr(arg, out),
+        IntNeg { arg, .. } | FloatNeg(arg) | Not(arg) | ToStr(arg) | ErrorMessage(arg) | Print(arg) | Diverge(arg) => {
+            calls_in_expr(arg, out)
+        }
         NewError { message, .. } | Fail { message, .. } => calls_in_expr(message, out),
         Cond { cond, then, els } => {
             calls_in_expr(cond, out);

@@ -1,0 +1,6 @@
+// An unclosed comment is reported at its start, not as the rest of the file.
+
+function main(): void {
+  print(1);
+  /* the rest of the file is in this comment
+}

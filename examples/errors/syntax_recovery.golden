@@ -1,0 +1,92 @@
+# Golden results for syntax_recovery.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0001]: expected `)` or `,`, found `b`
+ --> syntax_recovery.dat:7:22
+7 | function pair(a: int b: int): int {
+  |                      ^
+
+error[E0001]: expected `;`, found `}`
+ --> syntax_recovery.dat:9:1
+9 | }
+  | ^ the statement before this needs a `;`
+fix: add `;`
+8 |   return a + b;
+
+error[E0001]: expected `)`, found `{`
+  --> syntax_recovery.dat:12:13
+12 |   if (ready {
+   |             ^
+
+error[E0001]: expected an expression, found `;`
+  --> syntax_recovery.dat:19:16
+19 |   let a = (1 + ;
+   |                ^
+
+error[E0001]: dat has no `===`; `==` compares contents
+  --> syntax_recovery.dat:21:9
+21 |   if (b === 2) {
+   |         ^^^
+fix: use `==`
+21 |   if (b == 2) {
+
+error[E0001]: expected `;`, found `}`
+  --> syntax_recovery.dat:26:1
+26 | }
+   | ^ the statement before this needs a `;`
+fix: add `;`
+25 |   return b;
+
+error[E0001]: expected `;`, found `c`
+  --> syntax_recovery.dat:29:7
+29 |   var c = 1;
+   |       ^ the statement before this needs a `;`
+7 errors, 3 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0001]: expected `)` or `,`, found `b`
+ --> syntax_recovery.dat:7:22
+7 | function pair(a: int b: int): int {
+  |                      ^
+
+error[E0001]: expected `;`, found `}`
+ --> syntax_recovery.dat:9:1
+9 | }
+  | ^ the statement before this needs a `;`
+fix: add `;`
+8 |   return a + b;
+
+error[E0001]: expected `)`, found `{`
+  --> syntax_recovery.dat:12:13
+12 |   if (ready {
+   |             ^
+
+error[E0001]: expected an expression, found `;`
+  --> syntax_recovery.dat:19:16
+19 |   let a = (1 + ;
+   |                ^
+
+error[E0001]: dat has no `===`; `==` compares contents
+  --> syntax_recovery.dat:21:9
+21 |   if (b === 2) {
+   |         ^^^
+fix: use `==`
+21 |   if (b == 2) {
+
+error[E0001]: expected `;`, found `}`
+  --> syntax_recovery.dat:26:1
+26 | }
+   | ^ the statement before this needs a `;`
+fix: add `;`
+25 |   return b;
+
+error[E0001]: expected `;`, found `c`
+  --> syntax_recovery.dat:29:7
+29 |   var c = 1;
+   |       ^ the statement before this needs a `;`
+7 errors, 3 fixable with dat fix

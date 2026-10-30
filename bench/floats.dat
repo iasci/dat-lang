@@ -1,0 +1,35 @@
+// Shown by `dat-conformance perf`: everyday float code, counting the points
+// of a grid that stay in the Mandelbrot set, with a little int work per
+// point. Against bench/floats.rs compiled and bench/floats.py interpreted.
+function escapes(cr: float, ci: float, limit: int): int {
+  let x = 0.0;
+  let y = 0.0;
+  for (let i = 0; i < limit; i++) {
+    const xx = x * x;
+    const yy = y * y;
+    if (xx + yy > 4.0) {
+      return i;
+    }
+    y = 2.0 * x * y + ci;
+    x = xx - yy + cr;
+  }
+  return limit;
+}
+
+function main(): void {
+  const size = 400;
+  let inside = 0;
+  let steps = 0;
+  for (let row = 0; row < size; row++) {
+    const ci = row / size * 2.4 - 1.2;
+    for (let col = 0; col < size; col++) {
+      const cr = col / size * 3.0 - 2.1;
+      const n = escapes(cr, ci, 120);
+      steps += n;
+      if (n == 120) {
+        inside++;
+      }
+    }
+  }
+  print(inside, steps);
+}

@@ -1,7 +1,9 @@
 # Spec cases that pass in both modes. The list may only grow:
 # `dat-conformance spec --bless` adds new passes.
 01-builtin-types.md:90#ok
-01-builtin-types.md:130#ok
+01-builtin-types.md:114#ok
+01-builtin-types.md:114#E0150@117
+01-builtin-types.md:138#ok
 02-variable-declaration.md:130#ok
 02-variable-declaration.md:130#E0250@132
 02-variable-declaration.md:130#E0252@134
@@ -9,16 +11,21 @@
 02-variable-declaration.md:139#E0203@140
 02-variable-declaration.md:139#E0204@143
 02-variable-declaration.md:139#E0205@145
+03-operators.md:22#ok
 03-operators.md:35#ok
 03-operators.md:35#E0350@36
 03-operators.md:43#ok
 03-operators.md:43#E0301@45
 03-operators.md:55#ok
+03-operators.md:55#E0302@59
 03-operators.md:68#ok
+03-operators.md:68#E0305@70
 03-operators.md:80#ok
 03-operators.md:80#E0303@85
 03-operators.md:80#E0304@87
 03-operators.md:160#ok
+04-primitive-methods.md:110#ok
+04-primitive-methods.md:133#ok
 06-functions.md:7#ok
 06-functions.md:23#ok
 06-functions.md:23#E0652@26
@@ -28,13 +35,18 @@
 06-functions.md:50#E0601@58
 06-functions.md:64#E0654@67
 06-functions.md:93#ok
-06-functions.md:93#E0650@98
-06-functions.md:93#E0650@99
-06-functions.md:210#ok
-06-functions.md:218#ok
-06-functions.md:218#E0661@219
+06-functions.md:93#E0656@94
+06-functions.md:99#ok
+06-functions.md:99#E0650@104
+06-functions.md:99#E0650@105
+06-functions.md:110#ok
+06-functions.md:216#ok
 06-functions.md:224#ok
-06-functions.md:224#E0660@225
+06-functions.md:224#E0661@225
+06-functions.md:230#ok
+06-functions.md:230#E0660@231
+07-control-flow.md:7#ok
+07-control-flow.md:24#ok
 07-control-flow.md:91#ok
 07-control-flow.md:160#ok
 07-control-flow.md:160#E0750@163

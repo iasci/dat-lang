@@ -1,0 +1,30 @@
+# Golden results for unclosed_template.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0001]: expected an expression, found `}`
+ --> unclosed_template.dat:5:18
+5 |   print(`a ${1 + } b`);
+  |                  ^
+
+error[E0001]: this template string is never closed
+ --> unclosed_template.dat:6:9
+6 |   print(`total: ${2}
+  |         ^
+2 errors
+
+=== run
+status: 2
+--- stderr
+error[E0001]: expected an expression, found `}`
+ --> unclosed_template.dat:5:18
+5 |   print(`a ${1 + } b`);
+  |                  ^
+
+error[E0001]: this template string is never closed
+ --> unclosed_template.dat:6:9
+6 |   print(`total: ${2}
+  |         ^
+2 errors

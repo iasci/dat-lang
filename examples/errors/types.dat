@@ -17,4 +17,5 @@ function main(): void {
   while (label) {
     break;
   }
+  print(1 in "abc");
 }

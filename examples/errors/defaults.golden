@@ -1,0 +1,60 @@
+# Golden results for defaults.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E1401]: end is not defined
+ --> defaults.dat:7:30
+7 | function window(start: int = end - 10, end: int = 10): int {
+  |                              ^^^ a default value can use only the parameters before it
+
+error[E0656]: `high` needs a default value, because a parameter before it has one
+  --> defaults.dat:11:32
+11 | function between(low: int = 0, high: int): bool {
+   |                                ^^^^^^^^^ parameters with defaults go after the ones without
+
+error[E0250]: expected an int, found a string
+  --> defaults.dat:15:25
+15 | function wrong(x: int = "zero"): int {
+   |                         ^^^^^^ this is a string
+
+error[E0650]: `connect` takes 1 to 3 arguments, but 0 were given
+  --> defaults.dat:20:9
+20 |   print(connect());
+   |         ^^^^^^^^^
+
+error[E0650]: `connect` takes 1 to 3 arguments, but 4 were given
+  --> defaults.dat:21:9
+21 |   print(connect("db", 1, "main", true));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 errors
+
+=== run
+status: 2
+--- stderr
+error[E1401]: end is not defined
+ --> defaults.dat:7:30
+7 | function window(start: int = end - 10, end: int = 10): int {
+  |                              ^^^ a default value can use only the parameters before it
+
+error[E0656]: `high` needs a default value, because a parameter before it has one
+  --> defaults.dat:11:32
+11 | function between(low: int = 0, high: int): bool {
+   |                                ^^^^^^^^^ parameters with defaults go after the ones without
+
+error[E0250]: expected an int, found a string
+  --> defaults.dat:15:25
+15 | function wrong(x: int = "zero"): int {
+   |                         ^^^^^^ this is a string
+
+error[E0650]: `connect` takes 1 to 3 arguments, but 0 were given
+  --> defaults.dat:20:9
+20 |   print(connect());
+   |         ^^^^^^^^^
+
+error[E0650]: `connect` takes 1 to 3 arguments, but 4 were given
+  --> defaults.dat:21:9
+21 |   print(connect("db", 1, "main", true));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 errors

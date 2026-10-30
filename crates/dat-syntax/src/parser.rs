@@ -1,8 +1,10 @@
 //! A hand-written recursive-descent parser with Pratt expressions.
 //!
-//! Syntax errors are reported as `E0001` and the parser resumes at the next
-//! top-level declaration, so one run finds an error per declaration. Inside a
-//! declaration it stops at the first error.
+//! Syntax errors are reported as `E0001`. After one, the parser resumes at
+//! the next statement, or at the next top-level declaration when the error
+//! is outside a function body, so one run finds every error. A statement
+//! that fails becomes `StmtKind::Error`, and a `let` keeps its name, so the
+//! checker reports nothing that follows from the syntax error.
 
 use crate::ast::*;
 use crate::lexer::{Kw, Token, TokenKind as T, lex};
@@ -27,9 +29,12 @@ pub fn parse(file: FileId, text: &str) -> Parsed {
         tokens: &tokens,
         sig,
         pos: 0,
-        ast: Ast { file, items: Vec::new(), exprs: Vec::new(), stmts: Vec::new() },
+        ast: Ast { file, items: Vec::new(), exprs: Vec::new(), stmts: Vec::new(), broken: Vec::new() },
         diags: Vec::new(),
         depth: 0,
+        fatal: false,
+        speculating: false,
+        seen_declaration: false,
     };
     p.items();
     let Parser { ast, diags, .. } = p;
@@ -50,6 +55,12 @@ struct Parser<'a> {
     diags: Vec<Diagnostic>,
     /// How deeply expressions and statements nest right now.
     depth: u32,
+    /// Nesting went too deep: give up on the declaration instead of resuming.
+    fatal: bool,
+    /// Trying out a parse that will be undone.
+    speculating: bool,
+    /// A declaration other than an import has been read.
+    seen_declaration: bool,
 }
 
 /// Deeper nesting is an error, so no later stage can overflow its stack.
@@ -184,10 +195,23 @@ impl<'a> Parser<'a> {
     }
 
     fn describe(&self, t: Token) -> String {
+        let text = self.text_of(self.head(t));
         match t.kind {
             T::Eof => "the end of the file".to_string(),
             T::Str | T::TemplateFull | T::TemplateHead => "a string".to_string(),
-            _ => format!("`{}`", self.text_of(t.span)),
+            T::Unknown if text == "/*" => "a comment that's never closed".to_string(),
+            T::Unknown if text.starts_with('"') => "a string that's never closed".to_string(),
+            T::Unknown if text == "`" || text == "}" => "a template string that's never closed".to_string(),
+            _ => format!("`{text}`"),
+        }
+    }
+
+    /// The part of `t` an error points at: the `}` that continues a
+    /// template string, not the text after it.
+    fn head(&self, t: Token) -> Span {
+        match t.kind {
+            T::TemplateMiddle | T::TemplateTail => Span::new(t.span.start, t.span.start + 1),
+            _ => t.span,
         }
     }
 
@@ -203,19 +227,74 @@ impl<'a> Parser<'a> {
         let t = self.tok(0);
         let found = self.describe(t);
         if kind == T::Semi {
-            // A missing `;` has an exact fix: insert it after the previous token.
+            let d = Diagnostic::error(E_SYNTAX, self.file, self.head(t), format!("expected `;`, found {found}"))
+                .with_label("the statement before this needs a `;`");
+            if !self.semicolon_fits() {
+                self.diags.push(d);
+                return Err(Fail);
+            }
             let at = self.prev_end();
-            let d = Diagnostic::error(E_SYNTAX, self.file, t.span, format!("expected `;`, found {found}"))
-                .with_label("the statement before this needs a `;`")
-                .with_fix(
-                    "add `;`",
-                    Applicability::Safe,
-                    vec![Edit { file: self.file, span: Span::new(at, at), before: String::new(), after: ";".into() }],
-                );
+            if self.speculating {
+                return Ok(Token { kind: T::Semi, span: Span::new(at, at) });
+            }
+            // The fix is exact: insert it after the previous token. Parsing
+            // goes on as if it were there.
+            let d = d.with_fix(
+                "add `;`",
+                Applicability::Safe,
+                vec![Edit { file: self.file, span: Span::new(at, at), before: String::new(), after: ";".into() }],
+            );
             self.diags.push(d);
-            return Err(Fail);
+            return Ok(Token { kind: T::Semi, span: Span::new(at, at) });
         }
-        self.error(t.span, format!("expected {what}, found {found}"))
+        self.error(self.head(t), format!("expected {what}, found {found}"))
+    }
+
+    /// Whether a `;` inserted before the current token ends the statement
+    /// the way the code means: the token is on a new line or closes the
+    /// block, and what follows then parses. So `return 1 }` gets the fix,
+    /// and `var x = 1;`, where a `;` would make `var;`, doesn't.
+    fn semicolon_fits(&mut self) -> bool {
+        let t = self.tok(0);
+        if matches!(t.kind, T::RBrace | T::Eof) {
+            return true;
+        }
+        if !self.on_new_line(t) {
+            return false;
+        }
+        if self.speculating {
+            return true;
+        }
+        if self.item_start_at(0) {
+            return self.speculate(|p| p.item().is_ok());
+        }
+        self.speculate(|p| p.stmt().is_ok())
+    }
+
+    /// Whether a line break separates `t` from the token before it.
+    fn on_new_line(&self, t: Token) -> bool {
+        self.text[self.prev_end() as usize..t.span.start as usize].contains('\n')
+    }
+
+    /// Runs `f`, then undoes everything it parsed and reported. True when
+    /// `f` succeeds without reporting anything.
+    fn speculate(&mut self, f: impl FnOnce(&mut Self) -> bool) -> bool {
+        let (pos, items, exprs, stmts, broken) =
+            (self.pos, self.ast.items.len(), self.ast.exprs.len(), self.ast.stmts.len(), self.ast.broken.len());
+        let (diags, depth, fatal, seen_declaration) = (self.diags.len(), self.depth, self.fatal, self.seen_declaration);
+        let was = std::mem::replace(&mut self.speculating, true);
+        let ok = f(self) && self.diags.len() == diags;
+        self.speculating = was;
+        self.pos = pos;
+        self.ast.items.truncate(items);
+        self.ast.exprs.truncate(exprs);
+        self.ast.stmts.truncate(stmts);
+        self.ast.broken.truncate(broken);
+        self.diags.truncate(diags);
+        self.depth = depth;
+        self.fatal = fatal;
+        self.seen_declaration = seen_declaration;
+        ok
     }
 
     fn ident(&mut self, what: &str) -> PResult<Ident> {
@@ -233,7 +312,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 let found = self.describe(t);
-                self.error(t.span, format!("expected a member name, found {found}"))
+                self.error(self.head(t), format!("expected a member name, found {found}"))
             }
         }
     }
@@ -349,9 +428,12 @@ impl<'a> Parser<'a> {
                 self.skip_statement()?;
                 ItemKind::Unsupported { what: "type aliases" }
             }
-            (_, "import") => {
-                self.skip_statement()?;
-                ItemKind::Unsupported { what: "imports" }
+            (_, "import") if !exported => {
+                if self.seen_declaration {
+                    let d = Diagnostic::error(E_SYNTAX, self.file, t.span, "imports go at the top of the file, before any declarations");
+                    self.diags.push(d);
+                }
+                ItemKind::Import(self.import()?)
             }
             (T::Keyword(Kw::Const), _) => {
                 self.skip_statement()?;
@@ -376,14 +458,87 @@ impl<'a> Parser<'a> {
                 );
             }
         };
+        if !matches!(kind, ItemKind::Import(_)) {
+            self.seen_declaration = true;
+        }
         let span = start.to(Span::new(self.prev_end(), self.prev_end()));
         self.ast.items.push(Item { kind, span });
         Ok(())
     }
 
+    /// After `import`: `{ a, b as c } from "path";` or `* as ns from "path";`.
+    fn import(&mut self) -> PResult<Import> {
+        self.bump(); // import
+        let kind = if self.eat(T::Star) {
+            if !self.eat_word("as") {
+                let t = self.tok(0);
+                let found = self.describe(t);
+                return self.error(self.head(t), format!("expected `as` and a name for the module, found {found}"));
+            }
+            ImportKind::Namespace(self.ident("a name for the module")?)
+        } else {
+            self.expect(T::LBrace, "`{` or `*`")?;
+            let mut names = Vec::new();
+            while !self.at(T::RBrace) {
+                let name = self.ident("a name to import")?;
+                let alias = if self.eat_word("as") { Some(self.ident("a name after `as`")?) } else { None };
+                names.push(ImportName { name, alias });
+                if !self.eat(T::Comma) {
+                    break;
+                }
+            }
+            let close = self.expect(T::RBrace, "`}` or `,` in the import")?.span;
+            ImportKind::Named { names, close }
+        };
+        if !self.eat_word("from") {
+            let t = self.tok(0);
+            let found = self.describe(t);
+            return self.error(self.head(t), format!("expected `from` and the module's path, found {found}"));
+        }
+        let path_tok = self.expect(T::Str, "the module's path, a string")?;
+        let path = self.decode_string(path_tok)?;
+        self.expect(T::Semi, "`;`")?;
+        Ok(Import { kind, path, path_span: path_tok.span })
+    }
+
     fn function(&mut self, exported: bool) -> PResult<Function> {
         self.bump(); // function
         let name = self.ident("a function name")?;
+        let header = self.function_header();
+        let body = match header {
+            Ok(_) => self.block(),
+            Err(Fail) => {
+                // Read the body anyway, for the syntax errors in it.
+                if self.skip_to_body() {
+                    let _ = self.block();
+                }
+                Err(Fail)
+            }
+        };
+        match (header, body) {
+            (Ok((generics, params, ret, throws)), Ok(body)) => Ok(Function { name, exported, params, ret, throws, body, generics }),
+            _ => {
+                self.ast.broken.push(name);
+                Err(Fail)
+            }
+        }
+    }
+
+    /// After a syntax error in a function's header: moves to the `{` that
+    /// starts its body. False if there's none before the next declaration.
+    fn skip_to_body(&mut self) -> bool {
+        while !self.fatal && !self.at(T::Eof) && !self.item_start_at(0) {
+            if self.at(T::LBrace) {
+                return true;
+            }
+            self.bump();
+        }
+        false
+    }
+
+    /// A function's header after its name, up to the `{` of its body.
+    #[allow(clippy::type_complexity)]
+    fn function_header(&mut self) -> PResult<(Option<Span>, Vec<Param>, Option<TypeExpr>, Option<TypeExpr>)> {
         let generics = if self.at(T::Lt) { Some(self.skip_group()?) } else { None };
         self.expect(T::LParen, "`(`")?;
         let mut params = Vec::new();
@@ -407,8 +562,10 @@ impl<'a> Parser<'a> {
         self.expect(T::RParen, "`)` or `,`")?;
         let ret = if self.eat(T::Colon) { Some(self.type_expr()?) } else { None };
         let throws = if self.eat_word("throws") { Some(self.type_expr()?) } else { None };
-        let body = self.block()?;
-        Ok(Function { name, exported, params, ret, throws, body, generics })
+        if !self.at(T::LBrace) {
+            self.expect(T::LBrace, "`{`")?;
+        }
+        Ok((generics, params, ret, throws))
     }
 
     // ---- types ----
@@ -479,7 +636,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 let found = self.describe(t);
-                self.error(t.span, format!("expected a type, found {found}"))
+                self.error(self.head(t), format!("expected a type, found {found}"))
             }
         }
     }
@@ -488,15 +645,87 @@ impl<'a> Parser<'a> {
 
     fn block(&mut self) -> PResult<Block> {
         let open = self.expect(T::LBrace, "`{`")?;
+        let errors = self.diags.len();
         let mut stmts = Vec::new();
         while !self.at(T::RBrace) {
             if self.at(T::Eof) {
+                // An error inside already explains it, such as a missing `)`.
+                if self.diags.len() > errors {
+                    return Err(Fail);
+                }
                 return self.error(open.span, "this `{` is never closed");
             }
-            stmts.push(self.stmt()?);
+            let start = self.pos;
+            match self.stmt() {
+                Ok(s) => stmts.push(s),
+                Err(Fail) if self.fatal || self.speculating => return Err(Fail),
+                Err(Fail) => stmts.push(self.recover_statement(start)),
+            }
         }
         let close = self.bump();
         Ok(Block { stmts, span: open.span.to(close.span) })
+    }
+
+    /// After a syntax error in the statement that started at token `start`:
+    /// skips to the start of the next statement and returns an `Error`
+    /// statement for the one that failed. A `let` keeps its name, with an
+    /// unknown value, so its later uses aren't reported as undefined.
+    fn recover_statement(&mut self, start: usize) -> StmtId {
+        let first = self.pos;
+        let mut depth = 0i32;
+        loop {
+            let t = self.tok(0);
+            match t.kind {
+                T::Eof => break,
+                T::Semi | T::RBrace if depth == 0 => {
+                    if t.kind == T::Semi {
+                        self.bump();
+                    }
+                    break;
+                }
+                // A statement keyword that starts a line starts the next statement.
+                T::Keyword(
+                    Kw::Let | Kw::Const | Kw::If | Kw::For | Kw::While | Kw::Return | Kw::Throw | Kw::Break | Kw::Continue | Kw::Try,
+                ) if self.pos > first && self.on_new_line(t) => break,
+                T::LParen | T::LBracket | T::LBrace => depth += 1,
+                T::RParen | T::RBracket => depth = (depth - 1).max(0),
+                T::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        // A statement that ends with a block, unless more follows it.
+                        self.bump();
+                        if matches!(self.peek(), T::Keyword(Kw::Else | Kw::Catch | Kw::Finally)) {
+                            continue;
+                        }
+                        self.eat(T::Semi);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            self.bump();
+        }
+        if self.pos == start {
+            self.bump();
+        }
+        let span = self.tokens[self.sig[start] as usize].span.to(Span::new(self.prev_end(), self.prev_end()));
+        let at = |k: usize| self.tokens[self.sig[(start + k).min(self.sig.len() - 1)] as usize];
+        let (t0, t1, t2) = (at(0), at(1), at(2));
+        // A word, a name and `=` or `:` look like a declaration of the name.
+        let declares = match (t0.kind, t1.kind, t2.kind) {
+            (T::Keyword(kw @ (Kw::Let | Kw::Const)), T::Ident, _) => Some(kw == Kw::Const),
+            (T::Ident, T::Ident, T::Eq | T::Colon) => Some(false),
+            _ => None,
+        };
+        let kind = match declares {
+            Some(is_const) => {
+                let name = Ident { name: self.text_of(t1.span).to_string(), span: t1.span };
+                let init = Some(self.alloc_expr(ExprKind::Error, span));
+                StmtKind::Let { is_const, name, ty: None, init }
+            }
+            None => StmtKind::Error,
+        };
+        self.alloc_stmt(kind, span)
     }
 
     fn stmt(&mut self) -> PResult<StmtId> {
@@ -642,7 +871,7 @@ impl<'a> Parser<'a> {
         if !self.at(T::LParen) {
             let t = self.tok(0);
             let found = self.describe(t);
-            return self.error(t.span, format!("expected `(` after `for`, found {found}"));
+            return self.error(self.head(t), format!("expected `(` after `for`, found {found}"));
         }
         // `for (const x of xs)`: look for `of` before the first `;` inside the parentheses.
         let mut k = 1;
@@ -712,7 +941,7 @@ impl<'a> Parser<'a> {
         if catches.is_empty() && finally.is_none() {
             let t = self.tok(0);
             let found = self.describe(t);
-            return self.error(t.span, format!("expected `catch` or `finally` after the `try` block, found {found}"));
+            return self.error(self.head(t), format!("expected `catch` or `finally` after the `try` block, found {found}"));
         }
         Ok(StmtKind::Try { body, catches, finally })
     }
@@ -723,6 +952,7 @@ impl<'a> Parser<'a> {
     fn nested<X>(&mut self, f: impl FnOnce(&mut Self) -> PResult<X>) -> PResult<X> {
         if self.depth >= MAX_NESTING {
             let t = self.tok(0);
+            self.fatal = true;
             return self.error(t.span, format!("this nests more than {MAX_NESTING} levels deep; split it into functions or variables"));
         }
         self.depth += 1;
@@ -786,6 +1016,7 @@ impl<'a> Parser<'a> {
             }
             let op_tok = self.bump();
             if matches!(op_tok.kind, T::EqEqEq | T::BangEqEq) {
+                // The fix is exact, so parsing goes on as if it were applied.
                 let (bad, good) = if op_tok.kind == T::EqEqEq { ("===", "==") } else { ("!==", "!=") };
                 let d = Diagnostic::error(E_SYNTAX, self.file, op_tok.span, format!("dat has no `{bad}`; `{good}` compares contents"))
                     .with_fix(
@@ -794,7 +1025,6 @@ impl<'a> Parser<'a> {
                         vec![Edit { file: self.file, span: op_tok.span, before: bad.into(), after: good.into() }],
                     );
                 self.diags.push(d);
-                return Err(Fail);
             }
             let rhs = self.binary(bp)?;
             let span = self.espan(lhs).to(self.espan(rhs));
@@ -894,7 +1124,16 @@ impl<'a> Parser<'a> {
         let kind = match t.kind {
             T::Int => {
                 self.bump();
-                ExprKind::Int(parse_int(self.text_of(t.span)))
+                let text = self.text_of(t.span);
+                match parse_int(text) {
+                    Ok(v) => ExprKind::Int(v),
+                    Err(problem) => {
+                        let d =
+                            Diagnostic::error(E_SYNTAX, self.file, t.span, format!("`{text}` isn't a valid number")).with_label(problem);
+                        self.diags.push(d);
+                        ExprKind::Error
+                    }
+                }
             }
             T::Float => {
                 self.bump();
@@ -936,7 +1175,7 @@ impl<'a> Parser<'a> {
             T::Ident => {
                 self.bump();
                 let name = self.text_of(t.span).to_string();
-                if self.at(T::LBrace) {
+                if self.at(T::LBrace) && self.struct_lit_ahead() {
                     return self.struct_lit(Ident { name, span: t.span });
                 }
                 ExprKind::Name(name)
@@ -979,6 +1218,8 @@ impl<'a> Parser<'a> {
                 let text = self.text_of(t.span);
                 let msg = if text.starts_with('"') || text.starts_with('`') {
                     "this string is never closed".to_string()
+                } else if text == "/*" {
+                    "this comment is never closed; end it with `*/`".to_string()
                 } else {
                     format!("unexpected character `{text}`")
                 };
@@ -986,10 +1227,21 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 let found = self.describe(t);
-                return self.error(t.span, format!("expected an expression, found {found}"));
+                return self.error(self.head(t), format!("expected an expression, found {found}"));
             }
         };
         Ok(self.alloc_expr(kind, t.span))
+    }
+
+    /// At `{` after a name: does a struct literal's body follow? It's `{}`,
+    /// a spread, or a field followed by `:`, `,` or `}`. Otherwise the `{`
+    /// starts a block, as in `if (ready {` with its `)` missing.
+    fn struct_lit_ahead(&self) -> bool {
+        match self.peek_at(1) {
+            T::RBrace | T::Ellipsis => true,
+            T::Ident | T::Keyword(_) => matches!(self.peek_at(2), T::Colon | T::Comma | T::RBrace),
+            _ => false,
+        }
     }
 
     fn struct_lit(&mut self, name: Ident) -> PResult<ExprId> {
@@ -1083,9 +1335,13 @@ impl<'a> Parser<'a> {
                     parts.push(TemplatePart::Text(decode(self, t, 1, 1)?));
                     return Ok(self.alloc_expr(ExprKind::Template(parts), first.span.to(t.span)));
                 }
+                T::Unknown if self.text_of(t.span) == "}" => {
+                    let open = Span::new(first.span.start, first.span.start + 1);
+                    return self.error(open, "this template string is never closed");
+                }
                 _ => {
                     let found = self.describe(t);
-                    return self.error(t.span, format!("expected `}}` to end the template substitution, found {found}"));
+                    return self.error(self.head(t), format!("expected `}}` to end the template substitution, found {found}"));
                 }
             }
         }
@@ -1149,14 +1405,20 @@ impl<'a> Parser<'a> {
 }
 
 /// Parses an integer literal: decimal with `_` separators, `0x` or `0b`.
-/// `None` when it doesn't fit in a `u64`.
-fn parse_int(text: &str) -> Option<u64> {
+/// `Ok(None)` when it doesn't fit in a `u64`, and `Err` with the problem
+/// when it isn't a number, as `0x` or `0b2`.
+fn parse_int(text: &str) -> Result<Option<u64>, String> {
     let clean: String = text.chars().filter(|&c| c != '_').collect();
-    if let Some(hex) = clean.strip_prefix("0x").or_else(|| clean.strip_prefix("0X")) {
-        u64::from_str_radix(hex, 16).ok()
-    } else if let Some(bin) = clean.strip_prefix("0b").or_else(|| clean.strip_prefix("0B")) {
-        u64::from_str_radix(bin, 2).ok()
-    } else {
-        clean.parse().ok()
+    let (digits, radix, kind) = match clean.get(..2) {
+        Some("0x" | "0X") => (&clean[2..], 16, "hexadecimal"),
+        Some("0b" | "0B") => (&clean[2..], 2, "binary"),
+        _ => (&clean[..], 10, "decimal"),
+    };
+    if digits.is_empty() {
+        return Err(format!("`{}` needs digits after it", &text[..2]));
     }
+    if let Some(c) = digits.chars().find(|c| !c.is_digit(radix)) {
+        return Err(format!("`{c}` isn't a {kind} digit"));
+    }
+    Ok(u64::from_str_radix(digits, radix).ok())
 }

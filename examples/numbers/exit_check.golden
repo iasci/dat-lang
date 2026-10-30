@@ -1,0 +1,10 @@
+# Golden results for exit_check.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== test
+status: 0
+--- stdout
+0 failed, 1 passed (<ms>)

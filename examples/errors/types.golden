@@ -48,7 +48,12 @@ error[E0701]: condition must be bool
    |          ^^^^^ `label` is a string
 fix: compare with the empty string
 17 |   while (label != "") {
-7 errors, 3 fixable with dat fix
+
+error[E0350]: `in` a string needs a string on its left, not an int
+  --> types.dat:20:9
+20 |   print(1 in "abc");
+   |         ^^^^^^^^^^
+8 errors, 3 fixable with dat fix
 
 === run
 status: 2
@@ -97,4 +102,9 @@ error[E0701]: condition must be bool
    |          ^^^^^ `label` is a string
 fix: compare with the empty string
 17 |   while (label != "") {
-7 errors, 3 fixable with dat fix
+
+error[E0350]: `in` a string needs a string on its left, not an int
+  --> types.dat:20:9
+20 |   print(1 in "abc");
+   |         ^^^^^^^^^^
+8 errors, 3 fixable with dat fix

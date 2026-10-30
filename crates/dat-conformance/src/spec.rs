@@ -241,7 +241,18 @@ fn nesting(code: &str, all: bool) -> i32 {
 
 fn is_literal(s: &str) -> bool {
     let s = s.trim();
-    s == "true" || s == "false" || (s.starts_with('"') && s.ends_with('"') && s.len() >= 2) || (s.parse::<i64>().is_ok())
+    let number = s.parse::<i64>().is_ok() || (s.parse::<f64>().is_ok_and(f64::is_finite) && s.contains(['.', 'e']));
+    s == "true" || s == "false" || (s.starts_with('"') && s.ends_with('"') && s.len() >= 2) || number
+}
+
+/// `stmt`, which `// throws RangeError: message` says throws.
+fn throws_check(stmt: &str, rest: &str) -> String {
+    let (ty, msg) = match rest.split_once(':') {
+        Some((t, m)) => (t.trim(), Some(m.trim())),
+        None => (rest.trim(), None),
+    };
+    let check = msg.map(|m| format!(" assert(e.message == {m:?});")).unwrap_or_default();
+    format!("  try {{ {stmt} fail(\"expected a {ty}\"); }} catch (e: {ty}) {{{check} }}")
 }
 
 /// One generated program, with a map from its lines back to the block's.
@@ -322,6 +333,10 @@ fn build_case(lines: &[String], drop: &[bool], keep_comments: bool, prelude: &[S
         if bare {
             counter += 1;
             let value = comment.map(|c| c.split(',').next().unwrap_or("").trim()).filter(|c| is_literal(c));
+            if let Some(rest) = comment.and_then(|c| c.strip_prefix("throws ")).filter(|r| !r.contains(" if ")) {
+                body.push((throws_check(&format!("const __e{counter} = {trimmed};"), rest), Some(i)));
+                continue;
+            }
             let text = match value {
                 Some(v) => format!("  assert(({trimmed}) == ({v}));"),
                 None => {
@@ -339,12 +354,7 @@ fn build_case(lines: &[String], drop: &[bool], keep_comments: bool, prelude: &[S
             && at_top
             && trimmed.ends_with(';')
         {
-            let (ty, msg) = match rest.split_once(':') {
-                Some((t, m)) => (t.trim(), Some(m.trim())),
-                None => (rest.trim(), None),
-            };
-            let check = msg.map(|m| format!(" assert(e.message == {m:?});")).unwrap_or_default();
-            body.push((format!("  try {{ {trimmed} fail(\"expected a {ty}\"); }} catch (e: {ty}) {{{check} }}"), Some(i)));
+            body.push((throws_check(trimmed, rest), Some(i)));
             continue;
         }
         body.push((format!("  {line}"), Some(i)));
@@ -503,6 +513,10 @@ fn check_error_case(block: &Block, e: &Expected, src: &CaseSource) -> Status {
             let edits: Vec<&dat_diag::Edit> = ours.edits.iter().collect();
             if let Some(fixed) = dat_diag::apply_edits(&file.text, &edits) {
                 let (_, after, _) = compile(&fixed, require_main);
+                // The fix can lead to something a later milestone implements.
+                if let Some(r) = unsupported_reason(&after) {
+                    return Status::Unsupported(format!("after the safe fix: {r}"));
+                }
                 if !after.is_empty() {
                     return Status::Fail(format!("after the safe fix: {}", after.iter().map(|d| d.code).collect::<Vec<_>>().join(", ")));
                 }

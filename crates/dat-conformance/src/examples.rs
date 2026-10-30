@@ -363,6 +363,21 @@ pub fn run(opts: &Opts) -> bool {
         if reviewed_path.exists() {
             reviewed_flow(path, &reviewed_path, opts, &mut report, &rel);
         }
+        // Deeply nested examples need the stack `dat` compiles on.
+        let text = src.clone();
+        let parsed = std::thread::Builder::new().stack_size(256 << 20).spawn(move || safe_fixes_parse(&text)).unwrap().join().unwrap();
+        match parsed {
+            Ok(()) => {
+                report.ok += 1;
+                if opts.verbose {
+                    println!("ok    {rel}: its safe fixes give code that parses");
+                }
+            }
+            Err(e) => {
+                println!("FAIL  {rel}: {e}");
+                report.failed.push(rel.clone());
+            }
+        }
         if opts.bless {
             let text = write_golden(file, &blessed);
             std::fs::write(&golden_path, text).expect("write golden");
@@ -370,6 +385,31 @@ pub fn run(opts: &Opts) -> bool {
     }
     println!("examples: {} ok, {} failed", report.ok, report.failed.len());
     report.failed.is_empty()
+}
+
+/// `dat fix` applies safe fixes without review, so each must leave code
+/// that parses: applied in rounds as `dat fix` does, they add no syntax error.
+fn safe_fixes_parse(src: &str) -> Result<(), String> {
+    let syntax_errors = |text: &str| {
+        let mut sources = dat_diag::SourceMap::new();
+        let c = dat_check::compile(&mut sources, "example.dat", text.to_string(), dat_check::Options::default());
+        let unfixed = c.diags.iter().filter(|d| d.code == dat_check::codes::SYNTAX && !d.is_fixable()).count();
+        (c.file, c.diags, unfixed)
+    };
+    let (_, _, before) = syntax_errors(src);
+    let mut text = src.to_string();
+    for _ in 0..4 {
+        let (file, diags, _) = syntax_errors(&text);
+        match dat_diag::apply_safe_fixes(&text, file, &diags) {
+            Some(fixed) if fixed != text => text = fixed,
+            _ => break,
+        }
+    }
+    let after = dat_syntax::parse(dat_diag::FileId(0), &text).diags.len();
+    if after > before {
+        return Err(format!("after its safe fixes, {after} syntax errors, up from the {before} that have no fix:\n{text}"));
+    }
+    Ok(())
 }
 
 /// The fix round trip: the JSON fixes and `dat fix` give `X.fixed`, which

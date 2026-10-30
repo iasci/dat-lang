@@ -1,0 +1,129 @@
+# Golden results for to_float.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0250]: expected a float, found an int
+  --> to_float.dat:11:22
+11 |   const sum: float = a + b;
+   |                      ^^^^^ this is an int
+fix: convert it with `toFloat()`
+11 |   const sum: float = (a + b).toFloat();
+
+error[E0250]: expected a float, found an int
+  --> to_float.dat:12:14
+12 |   print(half(count), sum);
+   |              ^^^^^ this is an int
+fix: convert it with `toFloat()`
+12 |   print(half(count.toFloat()), sum);
+2 errors, 2 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0250]: expected a float, found an int
+  --> to_float.dat:11:22
+11 |   const sum: float = a + b;
+   |                      ^^^^^ this is an int
+fix: convert it with `toFloat()`
+11 |   const sum: float = (a + b).toFloat();
+
+error[E0250]: expected a float, found an int
+  --> to_float.dat:12:14
+12 |   print(half(count), sum);
+   |              ^^^^^ this is an int
+fix: convert it with `toFloat()`
+12 |   print(half(count.toFloat()), sum);
+2 errors, 2 fixable with dat fix
+
+=== check --json
+status: 1
+--- stderr
+{
+  "schemaVersion": 1,
+  "diagnostics": [
+    {
+      "code": "E0250",
+      "severity": "error",
+      "message": "expected a float, found an int",
+      "file": "to_float.dat",
+      "span": {
+        "byteStart": 237,
+        "byteEnd": 242,
+        "line": 11,
+        "col": 22,
+        "endLine": 11,
+        "endCol": 27
+      },
+      "labels": [
+        {
+          "message": "this is an int"
+        }
+      ],
+      "fixes": [
+        {
+          "title": "convert it with `toFloat()`",
+          "applicability": "safe",
+          "isPreferred": true,
+          "edits": [
+            {
+              "file": "to_float.dat",
+              "byteStart": 237,
+              "byteEnd": 242,
+              "before": "a + b",
+              "after": "(a + b).toFloat()"
+            }
+          ]
+        }
+      ],
+      "rendered": "error[E0250]: expected a float, found an int\n  --> to_float.dat:11:22\n11 |   const sum: float = a + b;\n   |                      ^^^^^ this is an int\nfix: convert it with `toFloat()`\n11 |   const sum: float = (a + b).toFloat();\n"
+    },
+    {
+      "code": "E0250",
+      "severity": "error",
+      "message": "expected a float, found an int",
+      "file": "to_float.dat",
+      "span": {
+        "byteStart": 257,
+        "byteEnd": 262,
+        "line": 12,
+        "col": 14,
+        "endLine": 12,
+        "endCol": 19
+      },
+      "labels": [
+        {
+          "message": "this is an int"
+        }
+      ],
+      "fixes": [
+        {
+          "title": "convert it with `toFloat()`",
+          "applicability": "safe",
+          "isPreferred": true,
+          "edits": [
+            {
+              "file": "to_float.dat",
+              "byteStart": 257,
+              "byteEnd": 262,
+              "before": "count",
+              "after": "count.toFloat()"
+            }
+          ]
+        }
+      ],
+      "rendered": "error[E0250]: expected a float, found an int\n  --> to_float.dat:12:14\n12 |   print(half(count), sum);\n   |              ^^^^^ this is an int\nfix: convert it with `toFloat()`\n12 |   print(half(count.toFloat()), sum);\n"
+    }
+  ],
+  "summary": {
+    "errors": 2,
+    "warnings": 0,
+    "fixable": 2
+  }
+}
+
+=== run (fixed)
+status: 0
+--- stdout
+1.5 3.0
