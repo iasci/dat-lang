@@ -52,6 +52,33 @@ print(second.name);   // Lin
 
 Copies are cheap. Lists, sets, maps and strings share memory between copies, and copy their contents only when one copy is modified while another still exists (copy-on-write). Assigning or passing a collection never copies its elements by itself.
 
+### What Never Copies
+
+Modifying a list, set, map or string copies its contents only while another copy of it exists. A variable's last use, when it isn't read again before it's reassigned or goes out of scope, hands over the value itself, not a copy. So these patterns never copy, in either run mode:
+
+```
+let items: list<int> = [];
+for (const n of numbers) {
+  items = append(items, n);        // `items` is replaced right after, so `append` gets the list itself
+}
+
+let text = "";
+for (const word of words) {
+  text += word;                    // appends to `text` in place
+}
+
+let byTeam: map<string, list<string>> = {};
+for (const person of people) {
+  let members = byTeam.get(person.team, []);   // takes the list out of the map
+  members.push(person.name);
+  byTeam[person.team] = members;               // and puts it back
+}
+```
+
+- A function that gets a value at its caller's last use can modify it without a copy, through a `let` copy of the parameter: `function append(xs: list<int>, x: int): list<int> { let r = xs; r.push(x); return r; }`.
+- Taking a value out and putting it back works the same for a struct field: `let tags = user.tags; tags.push(t); user.tags = tags;`. It holds when nothing reads the map or struct between the two steps.
+- Changing a value through a key, field or index (`teams["red"].push("Lin")`, `user.tags.push("admin")`), a `mut` parameter or a `mut` loop variable never copies it either.
+
 ### Changing a Value in Place
 
 To let a function change the caller's value, mark the parameter `mut` and pass the argument with `mut`. See [`mut` parameters](./06-functions.md#mut-parameters).

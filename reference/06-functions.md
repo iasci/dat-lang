@@ -153,7 +153,7 @@ const greet = (name: string) => {
 const answer = () => 42;
 ```
 
-The return type is optional and inferred from the body.
+The return type is optional and inferred from the body, except in an exported `const`. See [Exporting](./17-imports.md#exporting).
 
 ### Callback Type Inference
 

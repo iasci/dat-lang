@@ -1,6 +1,6 @@
 # Map Methods
 
-`map<K, V>` holds key-value pairs in insertion order. `K` must be [hashable](./01-builtin-types.md#equality-hashing-and-ordering); `V` can be any type.
+`map<K, V>` holds key-value pairs in insertion order. Setting the value of a key that's already present keeps its place. `delete` keeps the remaining entries in order, and a key added again after `delete` goes last. `K` must be [hashable](./01-builtin-types.md#equality-hashing-and-ordering); `V` can be any type.
 
 ## Creating Maps
 

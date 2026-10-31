@@ -258,7 +258,9 @@ function parseAll(texts: list<string>): list<int> throws ParseError {
 }
 ```
 
-A function type declares its errors the way a function does: `(text: string) => int throws ParseError`. An arrow function's errors are inferred from its body.
+A function type declares its errors the way a function does: `(text: string) => int throws ParseError`. An arrow function's errors are inferred from its body, except in an exported `const`, where it can throw only what its `throws` lists: `(text: string): int throws ParseError => try parsePort(text)`.
+
+When a callback throws, the method stops and the error passes to its caller. The list, set or map the method was called on is left as it was, including after `sort` and `sortBy`.
 
 ## Uncaught Errors
 

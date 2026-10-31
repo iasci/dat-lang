@@ -46,8 +46,8 @@ compiler added, approved with their ❌ examples at M0, end in 50–99.
 | E2050 | spec §20 | Two tests in one module have the same name | — |
 
 The spec's other codes (E0101–E0104, E0202, E0206, E0501, E0602, E0603, E0702,
-E0703, E0801, E0802, E1501, E1702, E1801, E1802 and E2201–E2206) belong to
+E0703, E0801, E0802, E1501, E1702, E1704, E1801, E1802 and E2201–E2206) belong to
 constructs that later milestones implement: collections, narrowing,
-closures, nullable types, `mut` loops, structs, interfaces, imports of
+closures, the types of exported constants, nullable types, `mut` loops, structs, interfaces, imports of
 files, enums and concurrency. The conformance
 runner reports their ❌ lines as `unsupported` until then.

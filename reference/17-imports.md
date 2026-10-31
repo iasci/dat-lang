@@ -30,6 +30,26 @@ const PRECISION = 10;
 
 `export` can be applied to `function`, `struct`, `enum`, `interface`, `type` and `const`. Exported functions, and the methods of exported structs, must declare their return types, so the compiler can check each module without reading the bodies of the modules it imports.
 
+An exported `const` follows the same idea: its type must be clear without reading any other code. It may leave the type out only when its value states the type itself:
+
+- a number, string, template string or `bool` literal, such as `10`, `-1`, `2.5`, `"v1"` or `true`;
+- a literal of a struct that isn't generic, such as `Config { port: 80 }`;
+- an enum member, such as `Level.Info`;
+- an arrow function that declares every parameter type and its return type. Like an exported function, it can throw only the errors its `throws` lists.
+
+Any other value needs a declared type: a call, an operator expression, another constant, a collection, `null`, or a literal of a generic struct.
+
+```
+export const VERSION = "1.4.0";                         // ✅ string
+export const DEFAULTS = Config { port: 80 };            // ✅ Config
+export const double = (x: int): int => x * 2;          // ✅
+export const LIMITS: map<string, int> = { free: 10 };   // ✅ declared
+export const TIMEOUT = 60 * 1000;     // ❌ E1704: exported constant `TIMEOUT` must declare its type
+                                      //    fix: export const TIMEOUT: int = 60 * 1000;
+export const triple = (x: int) => x * 3;   // ❌ E1704: exported constant `triple` must declare its return type
+                                           //    fix: export const triple = (x: int): int => x * 3;
+```
+
 ## Module Constants
 
 A module-level `const` is computed once, the first time it's used. Its initializer can't throw a declared error; use `try!`, which turns a failure into an `AssertionError`. A constant whose initializer depends on itself, directly or through other constants, throws an `AssertionError` when first used.

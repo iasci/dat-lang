@@ -1,6 +1,6 @@
 # Set Methods
 
-`set<T>` holds unique values in insertion order. Adding a value that's already present does nothing. Membership checks take constant time. `T` must be [hashable](./01-builtin-types.md#equality-hashing-and-ordering).
+`set<T>` holds unique values in insertion order. Adding a value that's already present does nothing. `delete` keeps the remaining values in order, and a value added again after `delete` goes last. Membership checks take constant time. `T` must be [hashable](./01-builtin-types.md#equality-hashing-and-ordering).
 
 ## Creating Sets
 

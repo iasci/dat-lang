@@ -50,6 +50,8 @@ These need a list that can be modified: a `let` variable, a `mut` parameter, or 
 | `reverse()` | `() => void` | Reverse in place |
 | `clear()` | `() => void` | Remove all elements |
 
+If `compare` contradicts itself, for example by putting `a` before `b` and `b` before `a`, `sort` still finishes without an error and keeps every element, in an unspecified order. The order in which `sort` calls `compare` isn't specified either. Both are the same in both run modes.
+
 ## Non-Mutating Methods
 
 | Method | Signature | Description |
