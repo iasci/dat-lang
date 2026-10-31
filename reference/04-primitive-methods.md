@@ -79,7 +79,7 @@ Strings are UTF-8. Lengths and positions count **bytes**, which is the same as c
 | `indexOf(text)` | `(text: string) => int` | Byte position of the first occurrence, or `-1` |
 | `lastIndexOf(text)` | `(text: string) => int` | Byte position of the last occurrence, or `-1` |
 | `slice(start, end?)` | `(start: int, end: int?) => string` | Text from `start` (inclusive) to `end` (exclusive, default the end). Negative positions count from the end, and out-of-range positions are clamped. Throws a `RangeError` if a position falls inside a multi-byte character, even when `start` is past `end` and the result is empty. |
-| `split(separator)` | `(separator: string) => list<string>` | Split on `separator`. Separators at the edges give empty strings: `"a,".split(",")` is `["a", ""]`. |
+| `split(separator)` | `(separator: string) => list<string>` | Split on `separator`. Separators at the edges give empty strings: `"a,".split(",")` is `["a", ""]`. An empty separator gives the characters, as `[...s]` does: `"héllo".split("")` is `["h", "é", "l", "l", "o"]`. |
 | `trim()` | `() => string` | Remove leading and trailing whitespace |
 | `trimStart()` | `() => string` | Remove leading whitespace |
 | `trimEnd()` | `() => string` | Remove trailing whitespace |
