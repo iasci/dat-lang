@@ -13,6 +13,9 @@
 
 #![forbid(unsafe_code)]
 
+mod collections;
+mod value;
+
 use dat_ir::{self as ir, Builtin, CmpOp, ExprKind, FloatOp, IntOp, Stmt, Type};
 use dat_rt::testing::TestInfo;
 use dat_rt::{DatError, ErrorKind, Join, Loc, Str, Trace};
@@ -21,75 +24,11 @@ use std::cmp::Ordering;
 use std::convert::identity;
 use std::rc::Rc;
 use std::time::Instant;
+use value::Value;
 
 /// The interpreter's stack. Its frames are larger than compiled code's, so
 /// it gets more room; both modes guarantee at least 10,000 nested calls.
 pub const STACK_SIZE: usize = 512 << 20;
-
-#[derive(Clone, Debug, Default)]
-enum Value {
-    #[default]
-    Void,
-    Int(i64),
-    Float(f64),
-    Bool(bool),
-    Str(Str),
-    Error(Rc<DatError>),
-}
-
-impl Value {
-    #[inline]
-    fn int(&self) -> i64 {
-        match self {
-            Value::Int(n) => *n,
-            _ => unreachable!("type checker guarantees an int"),
-        }
-    }
-
-    #[inline]
-    fn float(&self) -> f64 {
-        match self {
-            Value::Float(x) => *x,
-            _ => unreachable!("type checker guarantees a float"),
-        }
-    }
-
-    #[inline]
-    fn bool(&self) -> bool {
-        match self {
-            Value::Bool(b) => *b,
-            _ => unreachable!("type checker guarantees a bool"),
-        }
-    }
-
-    fn str(&self) -> &Str {
-        match self {
-            Value::Str(s) => s,
-            _ => unreachable!("type checker guarantees a string"),
-        }
-    }
-
-    fn error(&self) -> &Rc<DatError> {
-        match self {
-            Value::Error(e) => e,
-            _ => unreachable!("type checker guarantees an error"),
-        }
-    }
-
-    fn into_str(self) -> Str {
-        match self {
-            Value::Str(s) => s,
-            _ => unreachable!("type checker guarantees a string"),
-        }
-    }
-
-    fn into_error(self) -> Rc<DatError> {
-        match self {
-            Value::Error(e) => e,
-            _ => unreachable!("type checker guarantees an error"),
-        }
-    }
-}
 
 /// How a statement finished. `return` leaves its value in [`Machine::ret`].
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -119,11 +58,14 @@ struct Machine {
     stack: Vec<Value>,
     /// The value of the last `return`, until its call takes it.
     ret: Value,
+    /// The values of the `mut` parameters of the call that just finished,
+    /// which its caller puts back where they came from.
+    out: Vec<Value>,
 }
 
 impl Machine {
     fn new() -> Machine {
-        Machine { stack: Vec::with_capacity(1 << 16), ret: Value::Void }
+        Machine { stack: Vec::with_capacity(1 << 16), ret: Value::Void, out: Vec::new() }
     }
 }
 
@@ -143,6 +85,10 @@ struct Func {
     params: usize,
     /// The default values of the last parameters, which see the ones before them.
     defaults: Box<[F<Value>]>,
+    /// The locals an arrow function's captured copies go in.
+    captures: Box<[usize]>,
+    /// The `mut` parameters, whose values go back to the caller.
+    by_ref: Box<[usize]>,
 }
 
 impl Func {
@@ -150,6 +96,17 @@ impl Func {
     #[inline]
     fn run(&self, c: &Code, m: &mut Machine, base: usize) -> R<Value> {
         m.stack.resize(base + self.locals, Value::Void);
+        let result = run(&self.body, c, m, base);
+        self.finish(m, base, result)
+    }
+
+    /// Runs a call of a closure: the arguments are on the stack from
+    /// `base`, and its captured copies go in their locals.
+    pub(crate) fn run_with(&self, c: &Code, m: &mut Machine, base: usize, captures: &[Value]) -> R<Value> {
+        m.stack.resize(base + self.locals, Value::Void);
+        for (slot, v) in self.captures.iter().zip(captures) {
+            m.stack[base + slot] = v.clone();
+        }
         let result = run(&self.body, c, m, base);
         self.finish(m, base, result)
     }
@@ -178,6 +135,13 @@ impl Func {
 
     #[inline]
     fn finish(&self, m: &mut Machine, base: usize, result: R<Flow>) -> R<Value> {
+        if !self.by_ref.is_empty() {
+            m.out.clear();
+            for &i in self.by_ref.iter() {
+                let v = std::mem::take(&mut m.stack[base + i]);
+                m.out.push(v);
+            }
+        }
         m.stack.truncate(base);
         match result {
             Ok(Flow::Return) => Ok(std::mem::take(&mut m.ret)),
@@ -224,7 +188,7 @@ impl Code {
             .functions
             .iter()
             .map(|f| {
-                let cx = Compiler { file, func: leak(&f.name), fault_plus_one };
+                let cx = Compiler { p: program, file, func: leak(&f.name), fault_plus_one, copies: dat_rt::copies::on() };
                 Func {
                     name: cx.func,
                     at: cx.loc(f.loc),
@@ -232,6 +196,8 @@ impl Code {
                     body: cx.block(&f.body),
                     params: f.params as usize,
                     defaults: f.defaults.iter().map(|d| cx.value(d)).collect(),
+                    captures: f.captures.iter().map(|l| l.0 as usize).collect(),
+                    by_ref: (0..f.params as usize).filter(|&i| f.locals[i].by_ref).collect(),
                 }
             })
             .collect();
@@ -240,15 +206,29 @@ impl Code {
 }
 
 /// Compiles one function.
-struct Compiler {
+struct Compiler<'p> {
+    p: &'p ir::Program,
     file: &'static str,
     func: &'static str,
     fault_plus_one: bool,
+    /// `--report-copies`: each change says where it is while it runs.
+    copies: bool,
 }
 
-impl Compiler {
+impl Compiler<'_> {
     fn loc(&self, l: ir::Loc) -> Loc {
         Loc { file: self.file, func: self.func, line: l.line, col: l.col }
+    }
+
+    /// `f`, which changes something at `loc`, saying so to the copy
+    /// report while it runs. The same IR nodes say so in generated code.
+    fn at<T: 'static>(&self, loc: Option<ir::Loc>, f: F<T>) -> F<T> {
+        let Some(loc) = loc.filter(|_| self.copies) else { return f };
+        let at = self.loc(loc);
+        node(move |c, m, b| {
+            let _at = dat_rt::copies::at(at);
+            f(c, m, b)
+        })
     }
 
     fn block(&self, b: &[Stmt]) -> Block {
@@ -257,11 +237,14 @@ impl Compiler {
 
     fn stmt(&self, s: &Stmt) -> F<Flow> {
         match s {
-            Stmt::Set(l, e) => match e.appended_to(*l) {
-                Some(parts) => self.append(l.0 as usize, &parts),
+            Stmt::Set(l, e, loc) => match e.appended_to(*l) {
+                Some(parts) => self.at(Some(*loc), self.append(l.0 as usize, &parts)),
                 None => self.store(l.0 as usize, e),
             },
             Stmt::Let(l, e) => self.store(l.0 as usize, e),
+            Stmt::Store(place, e) => self.at(place.loc(), self.store_place(place, e)),
+            Stmt::ForOf { var, iter, body } => self.for_of(*var, iter, body),
+            Stmt::ForMut { var, list, body, loc } => self.at(Some(*loc), self.for_mut(*var, list, body)),
             Stmt::Expr(e) => {
                 let e = self.effect(e);
                 node(move |c, m, b| e(c, m, b).map(|()| Flow::Normal))
@@ -388,7 +371,16 @@ impl Compiler {
                 let l = l.0 as usize;
                 node(move |_, m, b| Ok(m.stack[b + l].clone()))
             }
+            (ExprKind::Move(l), _) => {
+                let l = l.0 as usize;
+                node(move |_, m, b| Ok(std::mem::take(&mut m.stack[b + l])))
+            }
             (ExprKind::Call { func, args, loc }, _) => self.call(*func, args, *loc, identity),
+            (k, _) if is_general(k) => self.general(e),
+            (ExprKind::Cond { cond, then, els }, Type::Of(_)) => self.cond(cond, self.value(then), self.value(els)),
+            (ExprKind::Diverge(a), Type::Of(_)) => self.diverge(a),
+            (ExprKind::Ref(_), _) => unreachable!("a `mut` argument is compiled by its call"),
+            (_, Type::Of(_)) => unreachable!("not an expression of a compound type: {e:?}"),
             (_, Type::Int) => self.int_to(e, Value::Int),
             (_, Type::Float) => self.float_to(e, Value::Float),
             (_, Type::Bool) => self.bool_to(e, Value::Bool),
@@ -429,6 +421,10 @@ impl Compiler {
                 })
             }
             ExprKind::Diverge(a) => self.diverge(a),
+            k if is_general(k) => {
+                let v = self.general(e);
+                node(move |c, m, b| v(c, m, b).map(drop))
+            }
             ExprKind::Cond { cond, then, els } if no_value => self.cond(cond, self.effect(then), self.effect(els)),
             _ if no_value => unreachable!("an expression with neither a value nor an effect: {e:?}"),
             _ => {
@@ -440,6 +436,9 @@ impl Compiler {
 
     /// A call, whose result `out` converts.
     fn call<T: 'static>(&self, func: ir::FuncId, args: &[ir::Expr], loc: ir::Loc, out: impl Fn(Value) -> T + 'static) -> F<T> {
+        if args.iter().any(|a| matches!(a.kind, ExprKind::Ref(_))) {
+            return self.at(Some(loc), self.call_refs(func, args, loc, out));
+        }
         let id = func.0 as usize;
         let given = args.len();
         let args: Box<[F<Value>]> = args.iter().map(|a| self.value(a)).collect();
@@ -525,6 +524,10 @@ impl Compiler {
             ExprKind::Cond { cond, then, els } => self.cond(cond, self.int_to(then, out), self.int_to(els, out)),
             ExprKind::Diverge(a) => self.diverge(a),
             ExprKind::Builtin { op, args, loc } => self.builtin_int(*op, args, self.loc(*loc), out),
+            k if is_general(k) => {
+                let v = self.general(e);
+                node(move |c, m, b| Ok(out(v(c, m, b)?.int())))
+            }
             _ => unreachable!("not an int expression: {e:?}"),
         }
     }
@@ -597,6 +600,10 @@ impl Compiler {
             ExprKind::Cond { cond, then, els } => self.cond(cond, self.float_to(then, out), self.float_to(els, out)),
             ExprKind::Diverge(a) => self.diverge(a),
             ExprKind::Builtin { op, args, loc } => self.builtin_float(*op, args, self.loc(*loc), out),
+            k if is_general(k) => {
+                let v = self.general(e);
+                node(move |c, m, b| Ok(out(v(c, m, b)?.float())))
+            }
             _ => unreachable!("not a float expression: {e:?}"),
         }
     }
@@ -688,6 +695,13 @@ impl Compiler {
                         Ok(out(holds(op, x.cmp(&rhs(c, m, b)?))))
                     })
                 }
+                (Type::Of(_), _) => {
+                    let (eq, lhs, rhs) = (*op == CmpOp::Eq, self.value(lhs), self.value(rhs));
+                    node(move |c, m, b| {
+                        let x = lhs(c, m, b)?;
+                        Ok(out(dat_rt::Equal::equal(&x, &rhs(c, m, b)?) == eq))
+                    })
+                }
                 (Type::Str, _) => {
                     let (op, lhs, rhs) = (*op, self.str(lhs), self.str(rhs));
                     node(move |c, m, b| {
@@ -713,6 +727,10 @@ impl Compiler {
             ExprKind::Cond { cond, then, els } => self.cond(cond, self.bool_to(then, out), self.bool_to(els, out)),
             ExprKind::Diverge(a) => self.diverge(a),
             ExprKind::Builtin { op, args, .. } => self.builtin_bool(*op, args, out),
+            k if is_general(k) => {
+                let v = self.general(e);
+                node(move |c, m, b| Ok(out(v(c, m, b)?.bool())))
+            }
             _ => unreachable!("not a bool expression: {e:?}"),
         }
     }
@@ -860,6 +878,12 @@ impl Compiler {
 
     fn str(&self, e: &ir::Expr) -> F<Str> {
         match &e.kind {
+            // Under `--report-copies`, a literal is made each time, as in
+            // generated code; otherwise appending to it would copy it.
+            ExprKind::Str(s) if self.copies => {
+                let s: Box<str> = s.as_str().into();
+                node(move |_, _, _| Ok(Str::new(&s)))
+            }
             ExprKind::Str(s) => {
                 let s = Str::new(s);
                 node(move |_, _, _| Ok(s.clone()))
@@ -867,6 +891,10 @@ impl Compiler {
             ExprKind::Local(l) => {
                 let l = l.0 as usize;
                 node(move |_, m, b| Ok(m.stack[b + l].str().clone()))
+            }
+            ExprKind::Move(l) => {
+                let l = l.0 as usize;
+                node(move |_, m, b| Ok(std::mem::take(&mut m.stack[b + l]).into_str()))
             }
             ExprKind::Call { func, args, loc } => self.call(*func, args, *loc, Value::into_str),
             ExprKind::Cond { cond, then, els } => self.cond(cond, self.str(then), self.str(els)),
@@ -881,6 +909,10 @@ impl Compiler {
                     let a = self.error(a);
                     node(move |c, m, b| Ok(a(c, m, b)?.to_str()))
                 }
+                Type::Of(_) => {
+                    let a = self.value(a);
+                    node(move |c, m, b| Ok(dat_rt::text(&a(c, m, b)?)))
+                }
                 _ => unreachable!("void has no string form"),
             },
             ExprKind::ErrorMessage(a) => {
@@ -888,6 +920,10 @@ impl Compiler {
                 node(move |c, m, b| Ok(a(c, m, b)?.message_str()))
             }
             ExprKind::Diverge(a) => self.diverge(a),
+            k if is_general(k) => {
+                let v = self.general(e);
+                node(move |c, m, b| Ok(v(c, m, b)?.into_str()))
+            }
             _ => unreachable!("not a string expression: {e:?}"),
         }
     }
@@ -920,7 +956,7 @@ impl Compiler {
 
     fn error(&self, e: &ir::Expr) -> F<Rc<DatError>> {
         match &e.kind {
-            ExprKind::Local(l) => {
+            ExprKind::Local(l) | ExprKind::Move(l) => {
                 let l = l.0 as usize;
                 node(move |_, m, b| Ok(m.stack[b + l].error().clone()))
             }
@@ -931,6 +967,10 @@ impl Compiler {
                 node(move |c, m, b| Ok(Rc::new(DatError::new(kind, message(c, m, b)?.as_str()))))
             }
             ExprKind::Diverge(a) => self.diverge(a),
+            k if is_general(k) => {
+                let v = self.general(e);
+                node(move |c, m, b| Ok(v(c, m, b)?.into_error()))
+            }
             _ => unreachable!("not an error expression: {e:?}"),
         }
     }
@@ -1024,7 +1064,7 @@ fn compare(op: CmpOp, a: &Value, b: &Value) -> bool {
         (Value::Float(x), Value::Int(y)) => num::cmp_float_int(*x, *y),
         (Value::Bool(x), Value::Bool(y)) => Some(x.cmp(y)),
         (Value::Str(x), Value::Str(y)) => Some(x.as_str().cmp(y.as_str())),
-        _ => unreachable!("type checker guarantees comparable operands"),
+        (x, y) => Some(if dat_rt::Equal::equal(x, y) { Ordering::Equal } else { Ordering::Less }),
     };
     num::holds(rt_cmp(op), ord)
 }
@@ -1081,6 +1121,7 @@ fn debug(v: &Value) -> String {
         Value::Str(s) => dat_rt::debug_str(s.as_str()),
         Value::Error(e) => e.to_display(),
         Value::Void => "void".into(),
+        other => dat_rt::debug(other),
     }
 }
 
@@ -1088,16 +1129,23 @@ fn debug(v: &Value) -> String {
 pub fn run_main(program: &ir::Program) -> i32 {
     let main = program.main.expect("the checker requires main for run");
     dat_rt::run_on_dat_thread(STACK_SIZE, || {
+        // Compiling leaks the names traces use, so it comes before the
+        // debug checks start counting.
         let code = Code::compile(program);
-        let mut m = Machine::new();
-        let status = match code.funcs[main.0 as usize].run(&code, &mut m, 0) {
-            Ok(_) => 0,
-            Err(err) => {
-                dat_rt::report_uncaught(&err);
-                1
+        let window = dat_rt::checks::begin();
+        let status = {
+            let mut m = Machine::new();
+            match code.funcs[main.0 as usize].run(&code, &mut m, 0) {
+                Ok(_) => 0,
+                Err(err) => {
+                    dat_rt::report_uncaught(&err);
+                    1
+                }
             }
         };
         dat_rt::flush_stdout();
+        let status = dat_rt::checks::end(window, status);
+        dat_rt::copies::finish();
         status
     })
 }
@@ -1112,21 +1160,45 @@ pub fn run_tests(programs: &[&ir::Program], filter: Option<&str>, verbose: bool)
         return 2;
     }
     dat_rt::run_on_dat_thread(STACK_SIZE, || {
-        let mut infos = Vec::new();
-        let mut outcomes = Vec::new();
-        let start = Instant::now();
-        for p in programs {
-            let code = Code::compile(p);
-            let mut m = Machine::new();
-            for i in selected(p) {
-                let t = &p.tests[i];
-                let f = &code.funcs[t.func.0 as usize];
-                let loc = Loc { file: code.file, func: f.name, line: t.loc.line, col: t.loc.col };
-                infos.push(TestInfo { name: t.name.clone(), frame: f.name, loc });
-                m.stack.clear();
-                outcomes.push(dat_rt::testing::run_one(|| f.run(&code, &mut m, 0).map(drop)));
+        let codes: Vec<Code> = programs.iter().map(|p| Code::compile(p)).collect();
+        let window = dat_rt::checks::begin();
+        let status = {
+            let mut infos = Vec::new();
+            let mut outcomes = Vec::new();
+            let start = Instant::now();
+            for (p, code) in programs.iter().zip(&codes) {
+                let mut m = Machine::new();
+                for i in selected(p) {
+                    let t = &p.tests[i];
+                    let f = &code.funcs[t.func.0 as usize];
+                    let loc = Loc { file: code.file, func: f.name, line: t.loc.line, col: t.loc.col };
+                    infos.push(TestInfo { name: t.name.clone(), frame: f.name, loc });
+                    m.stack.clear();
+                    outcomes.push(dat_rt::testing::run_one(|| f.run(code, &mut m, 0).map(drop)));
+                }
             }
-        }
-        dat_rt::testing::report(&infos, &outcomes, start.elapsed(), verbose)
+            dat_rt::testing::report(&infos, &outcomes, start.elapsed(), verbose)
+        };
+        let status = dat_rt::checks::end(window, status);
+        dat_rt::copies::finish();
+        status
     })
+}
+
+/// The expressions only [`Compiler::general`] compiles.
+fn is_general(k: &ExprKind) -> bool {
+    matches!(
+        k,
+        ExprKind::ListLit(_)
+            | ExprKind::SetLit(_)
+            | ExprKind::MapLit(_)
+            | ExprKind::TupleLit(_)
+            | ExprKind::Index { .. }
+            | ExprKind::TupleGet(..)
+            | ExprKind::FuncRef(_)
+            | ExprKind::Closure { .. }
+            | ExprKind::CallValue { .. }
+            | ExprKind::Method { .. }
+            | ExprKind::Mutate { .. }
+    )
 }

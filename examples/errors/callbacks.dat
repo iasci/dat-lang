@@ -1,0 +1,21 @@
+// Mistakes with callbacks and the members of collections. Each gets one
+// error; `x => ...` gets the parentheses as its safe fix.
+
+function fill(mut xs: list<int> = []): void {
+  xs.push(1);
+}
+
+function main(): void {
+  const xs = [3, 1, 2];
+  print(xs.filter((x) => { x > 1; }));
+  print(xs.map((x) => { return; }));
+  print(xs.map(x => x * 2));
+  print(xs.sorted(), xs.reversed(), xs.size);
+  const m = { a: 1 };
+  print(m.length);
+  let ys = [1];
+  ys.length = 0;
+  for (mut y of ys) {
+    y += ys.length;
+  }
+}

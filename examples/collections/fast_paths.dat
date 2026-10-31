@@ -1,0 +1,67 @@
+// Generated code takes faster paths that nothing may tell apart from the
+// interpreter's: a sort with `(a, b) => a - b` sorts in place when no
+// difference can overflow, a comparator or key that can't throw sorts in
+// place, `filter` keeps what stays in a list `map` just made, and a value
+// taken out of a map or list is changed where it is.
+
+function check(x: int): int {
+  if (x > 100) {
+    throw RangeError { message: `too big: ${x}` };
+  }
+  return x;
+}
+
+function main(): void {
+  // `a - b` and `b - a`.
+  let xs = [5, -3, 12, 0, 7, -3];
+  xs.sort((a, b) => a - b);
+  print(xs);
+  xs.sort((a, b) => b - a);
+  print(xs, xs.toSorted((a, b) => a - b), xs);
+
+  // A difference that can overflow: the comparator throws, and the list is left as it was.
+  let wide = [9_223_372_036_854_775_807, -2, 0];
+  try {
+    wide.sort((a, b) => a - b);
+  } catch (e) {
+    print("caught", e.message, wide);
+  }
+  try {
+    print(wide.toSorted((a, b) => b - a));
+  } catch (e) {
+    print("caught", e.message, wide);
+  }
+
+  // A key that can't throw: stable, ties keep their order.
+  let ys = [21, 11, 3, 1, 33, 40];
+  ys.sortBy((x) => x % 10);
+  print(ys, [2.5, -1.0, 0.0, -0.0].toSortedBy((x) => x * 2.0));
+  print(ys.toSortedBy((x) => x % 10 == 0 ? 1 : 0), ys.toSorted((a, b) => a < b ? 1 : (a > b ? -1 : 0)));
+
+  // `filter` on what `map` just made, with the index, and one that throws.
+  const nums = [1, 2, 3, 4, 5, 6];
+  print(nums.map((x) => x * 10).filter((x, i) => i % 2 == 0), nums);
+  try {
+    print(nums.map((x) => x * 30).filter((x) => check(x) > 0));
+  } catch (e) {
+    print("caught", e.message, nums);
+  }
+  const pick = nums.length > 3;
+  print((pick ? nums : [0]).filter((x) => x > 4), nums);
+
+  // Taken out and put back: a missing key goes last, as if inserted at the put-back.
+  let groups: map<string, list<int>> = {"b": [1]};
+  for (const n of [5, 6, 7]) {
+    const key = n % 2 == 0 ? "a" : "b";
+    let members = groups.get(key, []);
+    members.push(n);
+    groups[key] = members;
+  }
+  let grid = [[1], [2]];
+  for (const i of range(4)) {
+    let row = grid[i % 2];
+    row.push(i);
+    grid[i % 2] = row;
+  }
+  print(groups, grid);
+}

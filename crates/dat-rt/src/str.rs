@@ -26,6 +26,14 @@ impl Str {
     }
 }
 
+impl crate::copies::Size for String {
+    const BYTES: bool = true;
+
+    fn size(&self) -> u64 {
+        self.len() as u64
+    }
+}
+
 impl fmt::Display for Str {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)

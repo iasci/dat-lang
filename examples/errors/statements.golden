@@ -105,6 +105,7 @@ error[E0305]: `total` has no effect
 37 |   for (total; total < 3; total++) {
    |        ^^^^^ a statement must do something, such as assign, call or return
 fix (review): remove the statement
+37 |   for (; total < 3; total++) {
 16 errors, 2 fixable with dat fix
 
 === run
@@ -211,4 +212,5 @@ error[E0305]: `total` has no effect
 37 |   for (total; total < 3; total++) {
    |        ^^^^^ a statement must do something, such as assign, call or return
 fix (review): remove the statement
+37 |   for (; total < 3; total++) {
 16 errors, 2 fixable with dat fix

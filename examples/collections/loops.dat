@@ -1,0 +1,75 @@
+// `for...of` over every collection, destructuring, spread and `split` (§02, §07).
+
+function main(): void {
+  for (const name of ["Ada", "Lin"]) {
+    print(name);
+  }
+  const tags: set<string> = ["go", "rust"];
+  for (const tag of tags) {
+    print(tag);
+  }
+  const scores = { ada: 10, lin: 20 };
+  for (const [key, value] of scores) {
+    print(`${key}: ${value}`);
+  }
+  for (const entry of scores) {
+    print(entry, entry[0]);
+  }
+  for (const c of "héllo") {
+    print(c);
+  }
+  for (const i of range(5)) {
+    if (i == 1) {
+      continue;
+    }
+    if (i == 4) {
+      break;
+    }
+    print(i);
+  }
+  print(range(5), range(2, 5), range(10, 0, -3), range(0));
+  for (const [i, name] of ["Ada", "Lin"].entries()) {
+    print(`${i}. ${name}`);
+  }
+  // The loop goes through the list as it was when it started.
+  let queue = [1, 2, 3];
+  for (const n of queue) {
+    queue.push(n * 10);
+  }
+  print(queue);
+  let k = 0;
+  for (let x of [1, 2, 3]) {
+    x *= 2;
+    k += x;
+  }
+  print(k);
+
+  const numbers = [1, 2, 3, 4, 5];
+  const [first, second] = numbers;
+  const [head, ...rest] = numbers;
+  const [_, _, third] = numbers;
+  const [a, b = 0] = [1];
+  const [[p, q], r] = [[1, 2], [3]];
+  print(first, second, head, rest, third, a, b, p, q, r);
+  const entry: [string, int] = ["alice", 30];
+  const [who, age] = entry;
+  print(who, age);
+  try {
+    const [x, y, z] = [1, 2];
+    print(x, y, z);
+  } catch (e) {
+    print(e);
+  }
+
+  const left = [1, 2];
+  const right = [3, 4];
+  print([...left, ...right], [0, ...left, 9], [..."héllo"]);
+  const unique: set<int> = [...left, ...right, ...left];
+  print(unique, [...unique]);
+  print("a,b,,c".split(","), "héllo".split(""), "abc".split("x"), "".split(","));
+  try {
+    print(range(0, 5, 0));
+  } catch (e) {
+    print(e);
+  }
+}

@@ -1,0 +1,25 @@
+# Golden results for fnparams.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 1
+--- stdout
+11 18
+105 -1
+15 12 [<function>, <function>]
+[11, 21, 31]
+42
+40 30 11
+80 [-9, -8]
+49
+[1, 2, 200] 102 8
+caught RangeError: too big: 9
+--- stderr
+RangeError: too big: 15
+  at check (fnparams.dat:58:5)
+  at <arrow> (fnparams.dat:86:27)
+  at apply (fnparams.dat:7:10)
+  at main (fnparams.dat:86:9)

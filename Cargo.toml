@@ -16,6 +16,7 @@ dat-check = { path = "crates/dat-check" }
 dat-rt = { path = "crates/dat-rt" }
 dat-interp = { path = "crates/dat-interp" }
 dat-codegen = { path = "crates/dat-codegen" }
+dat-own = { path = "crates/dat-own" }
 
 [profile.release]
 debug = "line-tables-only"

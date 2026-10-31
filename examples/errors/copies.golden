@@ -1,0 +1,64 @@
+# Golden results for copies.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0202]: `row` is modified but never used afterwards
+ --> copies.dat:6:3
+6 |   row.push(5);
+  |   ^^^ it's a copy of `grid[0]`; change `grid[0]` directly
+fix (review): change `grid[0]`
+6 |   grid[0].push(5);
+
+error[E0202]: `copy` is modified but never used afterwards
+ --> copies.dat:8:3
+8 |   copy[1].push(3);
+  |   ^^^^ it's a copy of `grid`; change `grid` directly
+fix (review): change `grid`
+8 |   grid[1].push(3);
+9 |   grid.push([9]);
+
+error[E0202]: `r` is modified but never used afterwards
+  --> copies.dat:14:5
+14 |     r.push(0);
+   |     ^ it's a copy of an element of `grid`; a `mut` loop variable changes the elements
+fix (review): loop with a `mut` variable
+13 |   for (mut r of grid) {
+
+error[E0202]: `r` is modified but never used afterwards
+  --> copies.dat:18:5
+18 |     r.push(0);
+   |     ^ it's a copy of an element of `fixed`; a `mut` loop variable changes the elements
+4 errors
+
+=== run
+status: 2
+--- stderr
+error[E0202]: `row` is modified but never used afterwards
+ --> copies.dat:6:3
+6 |   row.push(5);
+  |   ^^^ it's a copy of `grid[0]`; change `grid[0]` directly
+fix (review): change `grid[0]`
+6 |   grid[0].push(5);
+
+error[E0202]: `copy` is modified but never used afterwards
+ --> copies.dat:8:3
+8 |   copy[1].push(3);
+  |   ^^^^ it's a copy of `grid`; change `grid` directly
+fix (review): change `grid`
+8 |   grid[1].push(3);
+9 |   grid.push([9]);
+
+error[E0202]: `r` is modified but never used afterwards
+  --> copies.dat:14:5
+14 |     r.push(0);
+   |     ^ it's a copy of an element of `grid`; a `mut` loop variable changes the elements
+fix (review): loop with a `mut` variable
+13 |   for (mut r of grid) {
+
+error[E0202]: `r` is modified but never used afterwards
+  --> copies.dat:18:5
+18 |     r.push(0);
+   |     ^ it's a copy of an element of `fixed`; a `mut` loop variable changes the elements
+4 errors

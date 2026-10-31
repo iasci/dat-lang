@@ -1,0 +1,19 @@
+# Golden results for callbacks.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 1
+--- stdout
+caught RangeError: too big: 5 [3, 1, 2]
+caught RangeError: too big: 6 [3, 1, 2]
+caught RangeError: too big: 6 [3, 1, 2]
+200 true
+[0, 0, 1, 1, 2] [98, 99, 99, 100, 100]
+--- stderr
+RangeError: too big: 9
+  at check (callbacks.dat:6:5)
+  at <arrow> (callbacks.dat:38:23)
+  at main (callbacks.dat:38:9)

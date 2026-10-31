@@ -1,0 +1,90 @@
+// Loops that change a list in place. Compiled, a list the loop only
+// indexes, measures, pushes to, pops and shifts is checked for a shared
+// buffer once, before the loop; none of these may tell the difference.
+
+function main(): void {
+  // Starts empty, with no buffer, and is filled by the loop.
+  let squares: list<int> = [];
+  for (const i of range(6)) {
+    squares.push(i * i);
+  }
+  print(squares, squares.length);
+
+  // A copy made before the loop keeps its own elements.
+  const before = squares;
+  let k = 0;
+  while (k < squares.length) {
+    squares[k] = squares[k] + 1;
+    k++;
+  }
+  print(before, squares);
+
+  // A queue: shift, push, isEmpty.
+  let queue = [1];
+  let order: list<int> = [];
+  while (!queue.isEmpty()) {
+    const v = queue.shift();
+    order.push(v);
+    if (v < 8) {
+      queue.push(v * 2);
+      queue.push(v * 2 + 1);
+    }
+  }
+  print(order);
+
+  // A stack: pop.
+  let stack = [1, 2, 3];
+  let popped: list<int> = [];
+  while (stack.length > 0) {
+    popped.push(stack.pop());
+  }
+  print(stack, popped);
+
+  // Elements of a list of lists, changed in place.
+  let rows: list<list<int>> = [[], [], []];
+  for (const i of range(7)) {
+    rows[i % 3].push(i);
+  }
+  print(rows);
+
+  // A throw inside the loop leaves the changes made before it.
+  let xs = [0, 0, 0];
+  try {
+    for (const i of range(5)) {
+      xs[i] = i + 1;
+    }
+  } catch (e) {
+    print(e.message);
+  }
+  print(xs);
+
+  // A loop inside a `try`, with a nested loop over the same list.
+  let grid = [1, 2, 3];
+  try {
+    for (const round of range(2)) {
+      for (const j of range(grid.length)) {
+        grid[j] = grid[j] * 10 + round;
+      }
+    }
+    print(grid);
+  } catch (e) {
+    print("never");
+  }
+
+  // Popping an empty list throws, and the loop's earlier pops stay done.
+  let few = [1, 2];
+  try {
+    while (true) {
+      print(few.pop());
+    }
+  } catch (e) {
+    print(e.message, few);
+  }
+
+  // Used another way in the loop: printed, so it keeps every check.
+  let shown = [1];
+  for (const i of range(3)) {
+    shown.push(i);
+    print(shown);
+  }
+}

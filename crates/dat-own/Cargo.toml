@@ -1,0 +1,10 @@
+[package]
+name = "dat-own"
+description = "The liveness pass: marks each variable's last use, so both run modes hand values over instead of copying them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dat-ir.workspace = true

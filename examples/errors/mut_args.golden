@@ -1,0 +1,148 @@
+# Golden results for mut_args.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0201]: `xs` is a parameter and can't be modified
+  --> mut_args.dat:12:3
+12 |   xs.push(0);
+   |   ^^ parameters are constants; copy the value into a `let` to change it
+
+error[E0658]: `addOne` changes `xs`, so pass it with `mut`
+  --> mut_args.dat:28:10
+28 |   addOne(ys);
+   |          ^^ every call shows which values it may change
+fix: pass it with `mut`
+28 |   addOne(mut ys);
+
+error[E0201]: `zs` is const and can't be modified
+  --> mut_args.dat:29:14
+29 |   addOne(mut zs);
+   |              ^^ declared with `const`
+fix (review): declare it with `let`
+27 |   let zs = [2];
+
+error[E0657]: `ys` is already passed as `mut` to this call
+  --> mut_args.dat:30:21
+30 |   merge(mut ys, mut ys);
+   |                     ^^ as `ys`; a call can change a value through one argument only
+
+error[E0659]: `size` doesn't change this argument, so it takes no `mut`
+  --> mut_args.dat:31:14
+31 |   print(size(mut ys));
+   |              ^^^^^^
+fix: remove `mut`
+31 |   print(size(ys));
+
+error[E0657]: `grid` is already passed as `mut` to this call
+  --> mut_args.dat:35:26
+35 |   merge(mut grid[i], mut grid[j]);
+   |                          ^^^^^^^ as `grid[i]`, which may be the same element
+fix (review): pass copies, and store them back after the call
+35 |   let a = grid[i];
+36 |   let b = grid[j];
+37 |   merge(mut a, mut b);
+38 |   grid[i] = a;
+39 |   grid[j] = b;
+
+error[E0657]: `grid` is already passed as `mut` to this call
+  --> mut_args.dat:36:26
+36 |   merge(mut grid[0], mut grid[0]);
+   |                          ^^^^^^^ as `grid[0]`; a call can change a value through one argument only
+
+error[E0657]: `grid` is already passed as `mut` to this call
+  --> mut_args.dat:37:24
+37 |   addRow(mut grid, mut grid[1]);
+   |                        ^^^^^^^ as `grid`; a call can change a value through one argument only
+
+error[E0657]: `grid` is already passed as `mut` to this call
+  --> mut_args.dat:38:36
+38 |   merge(mut grid[next(mut i)], mut grid[0]);
+   |                                    ^^^^^^^ as `grid[next(mut i)]`, which may be the same element
+
+error[E0703]: `users` is in use by the loop
+  --> mut_args.dat:41:5
+41 |     users.push(u);
+   |     ^^^^^ inside a `for (mut ...)` loop, the list can only be reached through the loop variable
+fix: loop over a copy with `const`
+40 |   for (const u of users) {
+
+error[E0350]: `"abc"` isn't a variable, so it can't be changed
+  --> mut_args.dat:43:17
+43 |   for (mut c of "abc") {
+   |                 ^^^^^ only a variable, or an element or key of one, can change
+11 errors, 3 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0201]: `xs` is a parameter and can't be modified
+  --> mut_args.dat:12:3
+12 |   xs.push(0);
+   |   ^^ parameters are constants; copy the value into a `let` to change it
+
+error[E0658]: `addOne` changes `xs`, so pass it with `mut`
+  --> mut_args.dat:28:10
+28 |   addOne(ys);
+   |          ^^ every call shows which values it may change
+fix: pass it with `mut`
+28 |   addOne(mut ys);
+
+error[E0201]: `zs` is const and can't be modified
+  --> mut_args.dat:29:14
+29 |   addOne(mut zs);
+   |              ^^ declared with `const`
+fix (review): declare it with `let`
+27 |   let zs = [2];
+
+error[E0657]: `ys` is already passed as `mut` to this call
+  --> mut_args.dat:30:21
+30 |   merge(mut ys, mut ys);
+   |                     ^^ as `ys`; a call can change a value through one argument only
+
+error[E0659]: `size` doesn't change this argument, so it takes no `mut`
+  --> mut_args.dat:31:14
+31 |   print(size(mut ys));
+   |              ^^^^^^
+fix: remove `mut`
+31 |   print(size(ys));
+
+error[E0657]: `grid` is already passed as `mut` to this call
+  --> mut_args.dat:35:26
+35 |   merge(mut grid[i], mut grid[j]);
+   |                          ^^^^^^^ as `grid[i]`, which may be the same element
+fix (review): pass copies, and store them back after the call
+35 |   let a = grid[i];
+36 |   let b = grid[j];
+37 |   merge(mut a, mut b);
+38 |   grid[i] = a;
+39 |   grid[j] = b;
+
+error[E0657]: `grid` is already passed as `mut` to this call
+  --> mut_args.dat:36:26
+36 |   merge(mut grid[0], mut grid[0]);
+   |                          ^^^^^^^ as `grid[0]`; a call can change a value through one argument only
+
+error[E0657]: `grid` is already passed as `mut` to this call
+  --> mut_args.dat:37:24
+37 |   addRow(mut grid, mut grid[1]);
+   |                        ^^^^^^^ as `grid`; a call can change a value through one argument only
+
+error[E0657]: `grid` is already passed as `mut` to this call
+  --> mut_args.dat:38:36
+38 |   merge(mut grid[next(mut i)], mut grid[0]);
+   |                                    ^^^^^^^ as `grid[next(mut i)]`, which may be the same element
+
+error[E0703]: `users` is in use by the loop
+  --> mut_args.dat:41:5
+41 |     users.push(u);
+   |     ^^^^^ inside a `for (mut ...)` loop, the list can only be reached through the loop variable
+fix: loop over a copy with `const`
+40 |   for (const u of users) {
+
+error[E0350]: `"abc"` isn't a variable, so it can't be changed
+  --> mut_args.dat:43:17
+43 |   for (mut c of "abc") {
+   |                 ^^^^^ only a variable, or an element or key of one, can change
+11 errors, 3 fixable with dat fix

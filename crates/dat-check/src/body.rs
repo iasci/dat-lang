@@ -1,5 +1,12 @@
 //! Checking and lowering one function or test body.
 
+mod closures;
+mod collections;
+mod copies;
+mod loops;
+mod methods;
+mod mut_args;
+
 use crate::Ty;
 use crate::codes;
 use crate::module::{Imported, Module, Ret};
@@ -9,6 +16,7 @@ use dat_ir as ir;
 use dat_syntax::ast::{self, AssignOp, BinOp, ExprId, ExprKind, StmtId, StmtKind, UnOp};
 
 /// An expression after checking: its IR and its type.
+#[derive(Clone)]
 struct TE {
     e: ir::Expr,
     ty: Ty,
@@ -98,6 +106,7 @@ fn needs_parens(e: &ast::Expr) -> bool {
             | ExprKind::Str(_)
             | ExprKind::Template(_)
             | ExprKind::Bool(_)
+            | ExprKind::List(_)
     )
 }
 
@@ -115,12 +124,23 @@ fn is_type_name(n: &str) -> bool {
     matches!(n, "int" | "float" | "string" | "bool")
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum VarKind {
     Let,
     Const,
     Param,
+    /// A `mut` parameter: the caller's value, which the function may change.
+    MutParam,
+    /// The variable of `for (mut x of xs)`: each element of `xs` in turn.
+    MutLoop,
     Catch,
+}
+
+impl VarKind {
+    /// Its value can be changed, by assignment or in place.
+    fn changeable(self) -> bool {
+        matches!(self, VarKind::Let | VarKind::MutParam | VarKind::MutLoop)
+    }
 }
 
 struct Var {
@@ -128,6 +148,9 @@ struct Var {
     local: ir::LocalId,
     ty: Ty,
     kind: VarKind,
+    /// How many arrow functions deep it's declared: a use from a deeper
+    /// one captures it.
+    level: usize,
     /// The whole declaration statement.
     decl: Span,
     /// The `const` keyword, for the fix that turns it into `let`.
@@ -146,8 +169,9 @@ struct Closed {
     depth: usize,
 }
 
-pub(crate) struct Body<'m, 'a> {
-    m: &'m mut Module<'a>,
+/// What belongs to the function being checked: the declared function or
+/// test, or an arrow function inside it.
+struct Frame {
     func: ir::FuncId,
     name: String,
     /// `None` while the return type is being inferred.
@@ -155,44 +179,103 @@ pub(crate) struct Body<'m, 'a> {
     returns: Vec<(Ty, Span)>,
     locals: Vec<ir::Local>,
     params: u32,
-    scopes: Vec<Vec<Var>>,
-    /// For each open scope, the statement being checked in it.
-    owners: Vec<(Span, &'static str)>,
-    closed: Vec<Closed>,
     loops: u32,
-    /// The innermost statement, and whether it's a simple one (`let`, assignment
-    /// or expression) that a fix may split.
-    stmt: Span,
-    stmt_simple: bool,
     /// A statement had a syntax error, so whether the body can reach its
     /// end isn't known.
     syntax_error: bool,
-    /// The lowered default values of the parameters that have them.
-    defaults: Vec<ir::Expr>,
-    /// While a default value is checked, the parameters after it, which it can't use.
-    later_params: Vec<String>,
+    /// For an arrow function: each captured variable's local in the
+    /// enclosing function, and its copy's local here.
+    captures: Vec<(ir::LocalId, ir::LocalId)>,
+    /// The `let` variables that start as copies, for E0202.
+    copies: Vec<copies::CopyOf>,
+    /// Every local changed, by assignment or in place, in order.
+    changed: Vec<ir::LocalId>,
+    /// The index of its first scope in `Body::scopes`.
+    scope_base: usize,
 }
 
-impl<'m, 'a> Body<'m, 'a> {
-    pub fn new(m: &'m mut Module<'a>, func: ir::FuncId, ret: Option<Ty>, name: String) -> Body<'m, 'a> {
-        Body {
-            m,
+impl Frame {
+    fn new(func: ir::FuncId, name: String, ret: Option<Ty>, scope_base: usize) -> Frame {
+        Frame {
             func,
             name,
             ret,
             returns: Vec::new(),
             locals: Vec::new(),
             params: 0,
+            loops: 0,
+            syntax_error: false,
+            captures: Vec::new(),
+            copies: Vec::new(),
+            changed: Vec::new(),
+            scope_base,
+        }
+    }
+}
+
+pub(crate) struct Body<'m, 'a> {
+    m: &'m mut Module<'a>,
+    f: Frame,
+    /// The frames of the functions around an arrow function being checked,
+    /// outermost first.
+    outer: Vec<Frame>,
+    scopes: Vec<Vec<Var>>,
+    /// For each open scope, the statement being checked in it.
+    owners: Vec<(Span, &'static str)>,
+    closed: Vec<Closed>,
+    /// The innermost statement, and whether it's a simple one (`let`, assignment
+    /// or expression) that a fix may split.
+    stmt: Span,
+    stmt_simple: bool,
+    /// The innermost statement's expression, or its `let`'s value, which a
+    /// fix may put statements around.
+    stmt_value: Option<Span>,
+    /// Where each open block ends, innermost last.
+    block_ends: Vec<u32>,
+    /// The lowered default values of the parameters that have them.
+    defaults: Vec<ir::Expr>,
+    /// While a default value is checked, the parameters after it, which it can't use.
+    later_params: Vec<String>,
+    /// The lists that running `for (mut x of xs)` loops go through, which
+    /// their bodies can't use (E0703): the variable's local, its level, and
+    /// the loop's header for the fix.
+    loop_lists: Vec<(ir::LocalId, usize, Span)>,
+    /// The `forEach` call being checked, if its callback could be a loop.
+    foreach_fix: Option<closures::ForEachFix>,
+    /// The last statement of the body being checked, which may be a value
+    /// written without `return`.
+    last_stmt: Option<StmtId>,
+    /// The type expected of the call being checked, which a method whose
+    /// result is a free type variable takes: `reduce(f, [])` where a
+    /// `list<int>` is expected.
+    call_want: Option<Ty>,
+}
+
+impl<'m, 'a> Body<'m, 'a> {
+    pub fn new(m: &'m mut Module<'a>, func: ir::FuncId, ret: Option<Ty>, name: String) -> Body<'m, 'a> {
+        Body {
+            m,
+            f: Frame::new(func, name, ret, 0),
+            outer: Vec::new(),
             scopes: vec![Vec::new()],
             owners: vec![(Span::default(), "function")],
             closed: Vec::new(),
-            loops: 0,
             stmt: Span::default(),
             stmt_simple: false,
-            syntax_error: false,
+            stmt_value: None,
+            block_ends: Vec::new(),
             defaults: Vec::new(),
             later_params: Vec::new(),
+            loop_lists: Vec::new(),
+            foreach_fix: None,
+            last_stmt: None,
+            call_want: None,
         }
+    }
+
+    /// How many arrow functions deep the code being checked is.
+    fn level(&self) -> usize {
+        self.outer.len()
     }
 
     // ---- helpers ----
@@ -203,7 +286,7 @@ impl<'m, 'a> Body<'m, 'a> {
 
     /// Whether this is the module's `main` function.
     fn is_main(&self) -> bool {
-        self.m.by_name.get("main") == Some(&self.func)
+        self.m.by_name.get("main") == Some(&self.f.func)
     }
 
     /// A `main` declared to return a value: E0661 reports it, so its
@@ -310,26 +393,35 @@ impl<'m, 'a> Body<'m, 'a> {
     }
 
     fn new_local(&mut self, name: &str, ty: Ty) -> ir::LocalId {
-        self.locals.push(ir::Local { name: name.to_string(), ty: ty.ir(), reassigned: false });
-        ir::LocalId(self.locals.len() as u32 - 1)
+        self.f.locals.push(ir::Local { name: name.to_string(), ty: ty.ir(), reassigned: false, by_ref: false });
+        ir::LocalId(self.f.locals.len() as u32 - 1)
     }
 
-    pub fn declare_param(&mut self, name: &str, ty: Ty, span: Span) {
-        if self.scopes[0].iter().any(|v| v.name == name) {
+    /// A local the compiler adds, such as the list a destructuring reads.
+    fn temp(&mut self, ty: Ty) -> ir::LocalId {
+        self.new_local("t", ty)
+    }
+
+    pub fn declare_param(&mut self, name: &str, ty: Ty, span: Span, is_mut: bool) {
+        let base = self.f.scope_base;
+        if self.scopes[base].iter().any(|v| v.name == name) {
             let d =
                 self.err(codes::REDECLARED, span, format!("`{name}` is already declared")).with_label("each parameter needs its own name");
             self.push(d);
         }
         let local = self.new_local(name, ty);
-        self.params += 1;
-        self.scopes[0].push(Var { name: name.to_string(), local, ty, kind: VarKind::Param, decl: span, keyword: None, stmt: None });
+        self.f.locals[local.0 as usize].by_ref = is_mut;
+        self.f.params += 1;
+        let kind = if is_mut { VarKind::MutParam } else { VarKind::Param };
+        let level = self.level();
+        self.scopes[base].push(Var { name: name.to_string(), local, ty, kind, level, decl: span, keyword: None, stmt: None });
     }
 
     /// A parameter's default value, checked with the parameters before it
     /// in scope. `later` names the parameters from this one on.
     pub fn default_value(&mut self, e: ExprId, ty: Ty, later: Vec<String>) {
         self.later_params = later;
-        let v = coerce(self.expr(e), ty);
+        let v = coerce(self.expr_want(e, Some(ty)), ty);
         self.expect_type(&v, ty, self.espan(e));
         self.defaults.push(v.e);
         self.later_params.clear();
@@ -348,7 +440,8 @@ impl<'m, 'a> Body<'m, 'a> {
     ) -> ir::LocalId {
         // The parameters and the function body share one scope, so a `let` can't
         // redeclare a parameter.
-        if self.scopes.len() == 2 && self.scopes[0].iter().any(|v| v.name == name.name) {
+        let base = self.f.scope_base;
+        if self.scopes.len() == base + 2 && self.scopes[base].iter().any(|v| v.name == name.name) {
             let d = self
                 .err(codes::REDECLARED, name.span, format!("{} is already declared", name.name))
                 .with_label("it's a parameter of this function; parameters are constants, so copy it into a variable with another name");
@@ -374,7 +467,9 @@ impl<'m, 'a> Body<'m, 'a> {
             self.push(d);
         }
         let local = self.new_local(&name.name, ty);
-        self.scopes.last_mut().unwrap().push(Var { name: name.name.clone(), local, ty, kind, decl, keyword, stmt });
+        self.f.locals[local.0 as usize].by_ref = kind == VarKind::MutLoop;
+        let level = self.level();
+        self.scopes.last_mut().unwrap().push(Var { name: name.name.clone(), local, ty, kind, level, decl, keyword, stmt });
         local
     }
 
@@ -382,26 +477,29 @@ impl<'m, 'a> Body<'m, 'a> {
 
     /// Checks the body and returns the lowered function and its return type.
     pub fn finish_function(mut self, block: &ast::Block, name_span: Span) -> (ir::Function, Ty) {
+        self.last_stmt = block.stmts.last().copied();
         let body = self.block(block, (block.span, "function"));
-        let ret = match self.ret {
+        self.report_copies();
+        let ret = match self.f.ret {
             Some(t) => t,
             None => self.infer_return(),
         };
         // A statement with a syntax error might have returned.
-        let unknown_end = self.is_bad_main(Some(ret)) || self.syntax_error;
+        let unknown_end = self.is_bad_main(Some(ret)) || self.f.syntax_error;
         if !matches!(ret, Ty::Void | Ty::Never | Ty::Poison) && !terminates(&body) && !unknown_end {
             self.missing_return(block, ret);
         }
         if ret == Ty::Never && !terminates(&body) && !unknown_end {
             self.never_reaches_end(block);
         }
-        let item = &self.ast().items[self.m.sigs[self.func.0 as usize].item];
+        let item = &self.ast().items[self.m.sigs[self.f.func.0 as usize].item];
         let func = ir::Function {
-            name: self.name.clone(),
-            params: self.params,
+            name: self.f.name.clone(),
+            params: self.f.params,
             defaults: std::mem::take(&mut self.defaults),
             ret: ret.ir(),
-            locals: std::mem::take(&mut self.locals),
+            locals: std::mem::take(&mut self.f.locals),
+            captures: Vec::new(),
             body,
             recursive: false,
             loc: self.loc(Span::new(item.span.start, name_span.end)),
@@ -411,7 +509,7 @@ impl<'m, 'a> Body<'m, 'a> {
 
     fn infer_return(&mut self) -> Ty {
         let mut ty = None;
-        for (t, span) in std::mem::take(&mut self.returns) {
+        for (t, span) in std::mem::take(&mut self.f.returns) {
             match ty {
                 None => ty = Some(t),
                 Some(first) if first != t && t != Ty::Poison && first != Ty::Poison => {
@@ -419,7 +517,7 @@ impl<'m, 'a> Body<'m, 'a> {
                         .err(
                             codes::MISMATCH,
                             span,
-                            format!("this returns {}, but an earlier `return` gives {}", t.a_name(), first.a_name()),
+                            format!("this returns {}, but an earlier `return` gives {}", self.m.an(t), self.m.an(first)),
                         )
                         .with_label("every `return` must give the same type");
                     self.push(d);
@@ -433,7 +531,7 @@ impl<'m, 'a> Body<'m, 'a> {
     /// §06: every path through a `never` function ends in `throw` or a `never` call.
     fn never_reaches_end(&mut self, block: &ast::Block) {
         let close = Span::new(block.span.end - 1, block.span.end);
-        let name = self.name.clone();
+        let name = self.f.name.clone();
         let edit = if self.starts_line(close.start) {
             let indent = self.indent_at(close.start);
             self.insert(self.line_start(close.start), format!("{indent}  fail(_);\n"))
@@ -449,7 +547,7 @@ impl<'m, 'a> Body<'m, 'a> {
 
     fn missing_return(&mut self, block: &ast::Block, ret: Ty) {
         let close = Span::new(block.span.end - 1, block.span.end);
-        let name = self.name.clone();
+        let name = self.f.name.clone();
         let edit = if self.starts_line(close.start) {
             let indent = self.indent_at(close.start);
             self.insert(self.line_start(close.start), format!("{indent}  return _;\n"))
@@ -457,8 +555,8 @@ impl<'m, 'a> Body<'m, 'a> {
             self.insert(close.start, " return _; ")
         };
         let d = self
-            .err(codes::MISSING_RETURN, close, format!("missing return: `{name}` can reach its end without returning {}", ret.a_name()))
-            .with_label(format!("`{name}` returns {}", ret.name()))
+            .err(codes::MISSING_RETURN, close, format!("missing return: `{name}` can reach its end without returning {}", self.m.an(ret)))
+            .with_label(format!("`{name}` returns {}", self.m.tn(ret)))
             .with_fix(format!("return a value at the end of `{name}`"), Applicability::Review, vec![edit]);
         self.push(d);
     }
@@ -467,6 +565,7 @@ impl<'m, 'a> Body<'m, 'a> {
 
     fn block(&mut self, block: &ast::Block, owner: (Span, &'static str)) -> ir::Block {
         self.push_scope(owner);
+        self.block_ends.push(block.span.end);
         let mut out = Vec::new();
         for &s in &block.stmts {
             let stmt = self.ast().stmt(s);
@@ -480,6 +579,7 @@ impl<'m, 'a> Body<'m, 'a> {
             *self.owners.last_mut().unwrap() = (stmt.span, kind);
             self.stmt(s, &mut out);
         }
+        self.block_ends.pop();
         self.pop_scope();
         out
     }
@@ -489,12 +589,16 @@ impl<'m, 'a> Body<'m, 'a> {
         let stmt = ast.stmt(id);
         self.stmt = stmt.span;
         self.stmt_simple = matches!(stmt.kind, StmtKind::Let { .. } | StmtKind::Assign { .. } | StmtKind::Expr(_));
+        self.stmt_value = match &stmt.kind {
+            StmtKind::Expr(e) | StmtKind::Let { init: Some(e), .. } => Some(self.espan(*e)),
+            _ => None,
+        };
         match &stmt.kind {
             StmtKind::Let { is_const, name, ty, init } => {
                 let annotated = ty.as_ref().map(|t| self.m.resolve_type(t));
                 if let (Some(t), Some(a @ (Ty::Void | Ty::Never))) = (ty.as_ref(), annotated) {
                     let d = self
-                        .err(codes::VOID_VALUE, t.span, format!("a variable can't have type {}", a.name()))
+                        .err(codes::VOID_VALUE, t.span, format!("a variable can't have type {}", self.m.tn(a)))
                         .with_label("no value has this type");
                     self.push(d);
                     if let Some(init) = *init {
@@ -508,7 +612,12 @@ impl<'m, 'a> Body<'m, 'a> {
                     self.declare(name, Ty::Poison, VarKind::Let, stmt.span, None, None, None);
                     return;
                 };
-                let mut value = self.expr(init);
+                if annotated.is_none() && self.empty_literal(init, name) {
+                    let kind = if *is_const { VarKind::Const } else { VarKind::Let };
+                    self.declare(name, Ty::Poison, kind, stmt.span, None, Some(init), Some(id));
+                    return;
+                }
+                let mut value = self.expr_want(init, annotated);
                 let mut ty = value.ty;
                 if let Some(want) = annotated {
                     value = coerce(value, want);
@@ -518,21 +627,21 @@ impl<'m, 'a> Body<'m, 'a> {
                 let value = coerce(value, ty);
                 if matches!(ty, Ty::Void | Ty::Never) {
                     let d = self
-                        .err(codes::VOID_VALUE, self.espan(init), format!("a variable can't hold {}", ty.name()))
-                        .with_label(format!("this expression has type {}", ty.name()));
+                        .err(codes::VOID_VALUE, self.espan(init), format!("a variable can't hold {}", self.m.tn(ty)))
+                        .with_label(format!("this expression has type {}", self.m.tn(ty)));
                     self.push(d);
                     ty = Ty::Poison;
                 }
                 let keyword = if *is_const { Some(Span::new(stmt.span.start, stmt.span.start + 5)) } else { None };
                 let kind = if *is_const { VarKind::Const } else { VarKind::Let };
                 let local = self.declare(name, ty, kind, stmt.span, keyword, Some(init), Some(id));
+                if kind == VarKind::Let && matches!(ty, Ty::Of(_)) && self.names_a_place(init) {
+                    let source = self.text(self.espan(init)).to_string();
+                    self.note_copy(local, &name.name, source, None);
+                }
                 out.push(ir::Stmt::Let(local, value.e));
             }
-            StmtKind::Assign { target, op, value } => {
-                if let Some(s) = self.assign(*target, *op, *value, stmt.span) {
-                    out.push(s);
-                }
-            }
+            StmtKind::Assign { target, op, value } => self.assign(*target, *op, *value, stmt.span, out),
             StmtKind::IncDec { target, inc, prefix } => {
                 if *prefix {
                     let t = self.text(self.espan(*target));
@@ -545,13 +654,26 @@ impl<'m, 'a> Body<'m, 'a> {
                     self.push(d);
                     return;
                 }
-                if let Some(s) = self.incdec(*target, *inc) {
-                    out.push(s);
-                }
+                self.incdec(*target, *inc, stmt.span, out);
             }
             StmtKind::Expr(e) => {
                 let v = self.expr(*e);
                 if v.ty != Ty::Poison && !has_call(ast, *e) {
+                    // `(x) => { x > 1; }`: the value at the end of a function
+                    // that returns one is most likely what it returns.
+                    if self.last_stmt == Some(id)
+                        && let Some(ret) = self.f.ret.filter(|r| !matches!(r, Ty::Void | Ty::Never | Ty::Poison))
+                        && coerce(v.clone(), ret).ty == ret
+                    {
+                        let src = self.text(self.espan(*e)).to_string();
+                        let d = self
+                            .err(codes::NO_EFFECT, self.espan(*e), format!("`{src}` has no effect"))
+                            .with_label(format!("`{}` returns {}, and this is its last statement", self.f.name, self.m.an(ret)))
+                            .with_fix("return it", Applicability::Review, vec![self.edit(stmt.span, format!("return {src};"))]);
+                        self.push(d);
+                        out.push(ir::Stmt::Return(Some(coerce(v, ret).e)));
+                        return;
+                    }
                     self.no_effect(*e, stmt.span);
                     return;
                 }
@@ -571,22 +693,22 @@ impl<'m, 'a> Body<'m, 'a> {
                 if let Some(u) = update {
                     self.stmt(*u, &mut step);
                 }
-                self.loops += 1;
+                self.f.loops += 1;
                 let body = self.block(body, (stmt.span, "for"));
-                self.loops -= 1;
+                self.f.loops -= 1;
                 self.pop_scope();
                 out.push(ir::Stmt::Loop { cond, body, step });
             }
             StmtKind::While { cond, body } => {
                 let cond = self.condition(*cond);
-                self.loops += 1;
+                self.f.loops += 1;
                 let body = self.block(body, (stmt.span, "while"));
-                self.loops -= 1;
+                self.f.loops -= 1;
                 out.push(ir::Stmt::Loop { cond: Some(cond.e), body, step: Vec::new() });
             }
             StmtKind::Break | StmtKind::Continue => {
                 let is_break = matches!(stmt.kind, StmtKind::Break);
-                if self.loops == 0 {
+                if self.f.loops == 0 {
                     let word = if is_break { "break" } else { "continue" };
                     let d = self
                         .err(codes::OUTSIDE_LOOP, stmt.span, format!("`{word}` outside a loop"))
@@ -615,7 +737,7 @@ impl<'m, 'a> Body<'m, 'a> {
                             .err(
                                 codes::THROW_NON_ERROR,
                                 self.espan(*value),
-                                format!("only errors can be thrown, and this is {}", t.a_name()),
+                                format!("only errors can be thrown, and this is {}", self.m.an(t)),
                             )
                             .with_label("throw a built-in error such as `RangeError { message: ... }`");
                         self.push(d);
@@ -629,9 +751,44 @@ impl<'m, 'a> Body<'m, 'a> {
                 let s = self.try_stmt(body, catches, stmt.span);
                 out.push(s);
             }
+            StmtKind::Destructure { is_const, pattern, ty, init } => {
+                self.destructure_stmt(*is_const, pattern, ty.as_ref(), *init, stmt.span, out);
+            }
+            StmtKind::ForOf { binding, pattern, iter, body } => self.for_of(*binding, pattern, *iter, body, stmt.span, out),
             StmtKind::Unsupported { what } => self.unsupported(stmt.span, what),
-            StmtKind::Error => self.syntax_error = true,
+            StmtKind::Error => self.f.syntax_error = true,
         }
+    }
+
+    /// Whether `e` names a variable or an element of one, so a `let` of
+    /// it is a copy of something the code could change directly.
+    fn names_a_place(&self, mut e: ExprId) -> bool {
+        let ast = self.ast();
+        loop {
+            match &ast.expr(e).kind {
+                ExprKind::Paren(i) | ExprKind::Index { base: i, .. } => e = *i,
+                ExprKind::Name(n) => return self.lookup(n).is_some(),
+                _ => return false,
+            }
+        }
+    }
+
+    /// E0206: `let items = [];` or `let m = {};`, whose type nothing says.
+    /// The fix adds a type to fill in.
+    fn empty_literal(&mut self, init: ExprId, name: &ast::Ident) -> bool {
+        let ann = match &self.ast().expr(init).kind {
+            ExprKind::List(items) if items.is_empty() => ": list<_>",
+            ExprKind::Map(entries) if entries.is_empty() => ": map<_, _>",
+            _ => return false,
+        };
+        let what = if ann.starts_with(": list") { "can't infer the element type" } else { "can't infer the key and value types" };
+        let d = self.err(codes::CANT_INFER, self.espan(init), what).with_label("nothing says what it will hold").with_fix(
+            "declare its type",
+            Applicability::Review,
+            vec![self.insert(name.span.end, ann)],
+        );
+        self.push(d);
+        true
     }
 
     /// §03: a statement that's only a value, with no call in it, such as
@@ -715,8 +872,10 @@ impl<'m, 'a> Body<'m, 'a> {
     fn not_bool(&mut self, cond: ExprId, ty: Ty) {
         let span = self.espan(cond);
         let src = self.text(span);
-        let mut d = self.err(codes::NOT_BOOL, span, "condition must be bool").with_label(format!("`{src}` is {}", ty.a_name()));
+        let mut d = self.err(codes::NOT_BOOL, span, "condition must be bool").with_label(format!("`{src}` is {}", self.m.an(ty)));
         let fix = match ty {
+            // A length or size is never negative.
+            Ty::Int if src.ends_with(".length") || src.ends_with(".size") => Some(("compare with 0", format!("{src} > 0"))),
             Ty::Int => Some(("compare with 0", format!("{src} != 0"))),
             Ty::Str => Some(("compare with the empty string", format!("{src} != \"\""))),
             _ => None,
@@ -727,34 +886,45 @@ impl<'m, 'a> Body<'m, 'a> {
         self.push(d);
     }
 
-    fn assign(&mut self, target: ExprId, op: AssignOp, value: ExprId, span: Span) -> Option<ir::Stmt> {
+    fn assign(&mut self, target: ExprId, op: AssignOp, value: ExprId, span: Span, out: &mut ir::Block) {
         let ast = self.ast();
         let ExprKind::Name(name) = &ast.expr(target).kind else {
-            if let ExprKind::Index { base, index } = ast.expr(target).kind {
-                let b = self.expr(base);
-                self.expr(index);
-                self.expr(value);
-                if b.ty == Ty::Str {
-                    let d = self
-                        .err(codes::BAD_OPERANDS, self.espan(target), "a string's characters can't be assigned")
-                        .with_label("strings are immutable; build a new one, for example with `slice` and `+`");
-                    self.push(d);
-                }
-                if b.ty != Ty::Poison && b.ty != Ty::Str {
-                    let d = self.err(codes::BAD_OPERANDS, self.espan(target), format!("{} can't be indexed", b.ty.a_name()));
-                    self.push(d);
-                }
-                return None;
-            }
-            self.expr(value);
-            self.unsupported(self.espan(target), "assignments to fields and elements");
-            return None;
+            self.assign_place(target, op, value, span, out);
+            return;
         };
-        let rhs = self.expr(value);
-        let (local, ty) = self.assignable(name, self.espan(target), "reassigned")?;
+        let want = if op == AssignOp::Set { self.lookup(name).map(|v| v.ty) } else { None };
+        let rhs = self.expr_want(value, want);
+        let Some((local, ty)) = self.assignable(name, self.espan(target), "reassigned") else { return };
         let rhs = coerce(rhs, ty);
-        let loc = self.loc(span);
         let current = mk(ir::ExprKind::Local(local), ty);
+        let Some(new) = self.updated(op, current, rhs, ty, value, span, name, true) else { return };
+        self.f.locals[local.0 as usize].reassigned = true;
+        out.push(ir::Stmt::Set(local, new.e, self.loc(span)));
+    }
+
+    /// `xs[i] = v`, `m[k] += 1` and the other assignments to an element.
+    fn assign_place(&mut self, target: ExprId, op: AssignOp, value: ExprId, span: Span, out: &mut ir::Block) {
+        let Some(mut p) = self.changeable_place(target, "modified") else {
+            self.expr(value);
+            return;
+        };
+        let rhs = self.expr_want(value, if op == AssignOp::Set { Some(p.ty) } else { None });
+        let rhs = coerce(rhs, p.ty);
+        if op != AssignOp::Set {
+            // `xs[f()] += 1` works out `f()` once.
+            self.hoist_steps(&mut p.place, out);
+        }
+        let current = TE { e: self.read_place(&p.place), ty: p.ty };
+        let text = self.text(self.espan(target)).to_string();
+        let Some(new) = self.updated(op, current, rhs, p.ty, value, span, &text, false) else { return };
+        out.push(ir::Stmt::Store(p.place, new.e));
+    }
+
+    /// The new value of `target`, whose current value is `current`, after
+    /// `op` with `rhs`. `var`: the target is a variable named `target`.
+    #[allow(clippy::too_many_arguments)]
+    fn updated(&mut self, op: AssignOp, current: TE, rhs: TE, ty: Ty, value: ExprId, span: Span, target: &str, var: bool) -> Option<TE> {
+        let loc = self.loc(span);
         let arith = match op {
             AssignOp::Add => Some(BinOp::Add),
             AssignOp::Sub => Some(BinOp::Sub),
@@ -763,9 +933,13 @@ impl<'m, 'a> Body<'m, 'a> {
             AssignOp::Rem => Some(BinOp::Rem),
             AssignOp::Set => None,
         };
-        let new = match op {
+        Some(match op {
             AssignOp::Set => {
+                let before = self.m.diags.len();
                 self.expect_type(&rhs, ty, self.espan(value));
+                if self.m.diags.len() > before || rhs.ty == Ty::Poison {
+                    return None;
+                }
                 rhs
             }
             AssignOp::Add if ty == Ty::Str && rhs.ty == Ty::Str => mk(ir::ExprKind::Concat(vec![current.e, rhs.e]), Ty::Str),
@@ -781,24 +955,22 @@ impl<'m, 'a> Body<'m, 'a> {
             }
             _ if ty == Ty::Float && rhs.ty.is_number() => self.combine(arith.unwrap(), current, rhs, span),
             _ if ty == Ty::Int && rhs.ty.is_number() => {
-                self.int_becomes_float(name, op, value, span);
+                self.int_becomes_float(target, var, op, value, span);
                 return None;
             }
             _ => {
                 let d = self
-                    .err(codes::BAD_OPERANDS, span, format!("can't apply `{}` to {} and {}", op.as_str(), ty.a_name(), rhs.ty.a_name()))
-                    .with_label(format!("`{name}` is {}", ty.a_name()));
+                    .err(codes::BAD_OPERANDS, span, format!("can't apply `{}` to {} and {}", op.as_str(), self.m.an(ty), self.m.an(rhs.ty)))
+                    .with_label(format!("`{target}` is {}", self.m.an(ty)));
                 self.push(d);
                 return None;
             }
-        };
-        self.locals[local.0 as usize].reassigned = true;
-        Some(ir::Stmt::Set(local, new.e))
+        })
     }
 
     /// E0302: `total /= 4` where `total` is an `int`. Either round the
     /// result, or make the variable a float where it's declared.
-    fn int_becomes_float(&mut self, name: &str, op: AssignOp, value: ExprId, stmt: Span) {
+    fn int_becomes_float(&mut self, name: &str, var: bool, op: AssignOp, value: ExprId, stmt: Span) {
         let ast = self.ast();
         let symbol = &op.as_str()[..1];
         let v = self.espan(value);
@@ -812,7 +984,7 @@ impl<'m, 'a> Body<'m, 'a> {
             .err(codes::INT_BECOMES_FLOAT, stmt, format!("`{name}` is an int, but `{result}` is a float"))
             .with_label(format!("`{name}` can't change its type"))
             .with_fix("round the result down", Applicability::Option, vec![self.edit(stmt, format!("{name} = ({result}).floor(){semi}"))]);
-        let decl = self.lookup(name).and_then(|v| v.stmt);
+        let decl = if var { self.lookup(name).and_then(|v| v.stmt) } else { None };
         if let Some(StmtKind::Let { ty, init: Some(init), .. }) = decl.map(|s| &ast.stmt(s).kind) {
             let edit = match ty {
                 Some(t) => self.edit(t.span, "float"),
@@ -855,9 +1027,22 @@ impl<'m, 'a> Body<'m, 'a> {
             self.push(d);
             return None;
         };
-        let (local, ty, kind, decl, keyword) = (var.local, var.ty, var.kind, var.decl, var.keyword);
+        let (local, ty, kind, decl, keyword, level) = (var.local, var.ty, var.kind, var.decl, var.keyword, var.level);
+        if kind.changeable() {
+            if level < self.level() {
+                // E0603: a closure can't use it at all.
+                self.capture_use(name, span);
+                return None;
+            }
+            if !self.check_in_use(local, level, name, span) {
+                return None;
+            }
+            self.copy_used(local);
+            self.f.changed.push(local);
+            return Some((local, ty));
+        }
         match kind {
-            VarKind::Let => Some((local, ty)),
+            VarKind::Let | VarKind::MutParam | VarKind::MutLoop => unreachable!("handled above"),
             VarKind::Const => {
                 let mut d = self
                     .err(codes::CONST_ASSIGN, span, format!("`{name}` is const and can't be {verb}"))
@@ -886,50 +1071,68 @@ impl<'m, 'a> Body<'m, 'a> {
         }
     }
 
-    fn incdec(&mut self, target: ExprId, inc: bool) -> Option<ir::Stmt> {
+    fn incdec(&mut self, target: ExprId, inc: bool, stmt: Span, out: &mut ir::Block) {
         let ast = self.ast();
         let span = self.espan(target);
-        let ExprKind::Name(name) = &ast.expr(target).kind else {
-            self.unsupported(span, "`++` and `--` on fields and elements");
-            return None;
-        };
-        let (local, ty) = self.assignable(name, span, if inc { "incremented" } else { "decremented" })?;
         let op = if inc { "++" } else { "--" };
+        let ExprKind::Name(name) = &ast.expr(target).kind else {
+            let Some(mut p) = self.changeable_place(target, "modified") else { return };
+            if p.ty != Ty::Int {
+                if p.ty != Ty::Poison {
+                    let d = self.err(
+                        codes::BAD_OPERANDS,
+                        span,
+                        format!("`{op}` needs an int, and `{}` is {}", self.text(span), self.m.an(p.ty)),
+                    );
+                    self.push(d);
+                }
+                return;
+            }
+            self.hoist_steps(&mut p.place, out);
+            let cur = self.read_place(&p.place);
+            let one = mk(ir::ExprKind::Int(1), Ty::Int);
+            let iop = if inc { ir::IntOp::Add } else { ir::IntOp::Sub };
+            let e = mk(ir::ExprKind::IntArith { op: iop, lhs: Box::new(cur), rhs: Box::new(one.e), loc: self.loc(stmt) }, Ty::Int);
+            out.push(ir::Stmt::Store(p.place, e.e));
+            return;
+        };
+        let Some((local, ty)) = self.assignable(name, span, if inc { "incremented" } else { "decremented" }) else { return };
         if ty != Ty::Int {
             if ty != Ty::Poison {
-                let d = self.err(codes::BAD_OPERANDS, span, format!("`{op}` needs an int, and `{name}` is {}", ty.a_name()));
+                let d = self.err(codes::BAD_OPERANDS, span, format!("`{op}` needs an int, and `{name}` is {}", self.m.an(ty)));
                 self.push(d);
             }
-            return None;
+            return;
         }
-        self.locals[local.0 as usize].reassigned = true;
+        self.f.locals[local.0 as usize].reassigned = true;
         let one = mk(ir::ExprKind::Int(1), Ty::Int);
         let cur = mk(ir::ExprKind::Local(local), Ty::Int);
         let op = if inc { ir::IntOp::Add } else { ir::IntOp::Sub };
         let e = mk(ir::ExprKind::IntArith { op, lhs: Box::new(cur.e), rhs: Box::new(one.e), loc: self.loc(span) }, Ty::Int);
-        Some(ir::Stmt::Set(local, e.e))
+        out.push(ir::Stmt::Set(local, e.e, self.loc(span)));
     }
 
     fn return_stmt(&mut self, value: Option<ExprId>, span: Span) -> Option<ir::Stmt> {
-        let v = value.map(|e| self.expr(e));
+        let want = self.f.ret;
+        let v = value.map(|e| self.expr_want(e, want));
         if let Some(e) = value
             && self.is_main()
         {
             self.m.main_returns.push((span, e));
         }
-        if self.is_bad_main(self.ret) {
+        if self.is_bad_main(self.f.ret) {
             return None;
         }
-        match (self.ret, v) {
+        match (self.f.ret, v) {
             (None, v) => {
                 let ty = v.as_ref().map_or(Ty::Void, |v| v.ty);
                 if ty != Ty::Never {
-                    self.returns.push((ty, span));
+                    self.f.returns.push((ty, span));
                 }
                 Some(ir::Stmt::Return(v.map(|v| v.e)))
             }
             (Some(Ty::Never), v) if v.as_ref().is_none_or(|v| v.ty != Ty::Never && v.ty != Ty::Poison) => {
-                let name = self.name.clone();
+                let name = self.f.name.clone();
                 let d = self
                     .err(codes::NEVER_RETURNS, span, format!("`{name}` returns never, so it can't `return`"))
                     .with_label("throw an error instead, or change the return type");
@@ -938,7 +1141,7 @@ impl<'m, 'a> Body<'m, 'a> {
                 Some(ir::Stmt::Return(None))
             }
             (Some(Ty::Void), Some(v)) if v.ty != Ty::Poison && v.ty != Ty::Never => {
-                let name = self.name.clone();
+                let name = self.f.name.clone();
                 let d = self
                     .err(
                         codes::RETURN_IN_VOID,
@@ -952,9 +1155,9 @@ impl<'m, 'a> Body<'m, 'a> {
             (Some(Ty::Void), v) => Some(ir::Stmt::Return(v.filter(|v| v.ty == Ty::Never).map(|v| v.e))),
             (Some(want), None) => {
                 if want != Ty::Poison {
-                    let name = self.name.clone();
+                    let name = self.f.name.clone();
                     let d = self
-                        .err(codes::RETURN_NO_VALUE, span, format!("`{name}` returns {}, so `return` needs a value", want.a_name()))
+                        .err(codes::RETURN_NO_VALUE, span, format!("`{name}` returns {}, so `return` needs a value", self.m.an(want)))
                         .with_fix("return a value", Applicability::Review, vec![self.edit(span, "return _;")]);
                     self.push(d);
                 }
@@ -984,7 +1187,7 @@ impl<'m, 'a> Body<'m, 'a> {
                     Ty::Poison => (ir::CatchFilter::All, Ty::Poison),
                     other => {
                         let d = self
-                            .err(codes::CATCH_NON_ERROR, t.span, format!("`{}` isn't an error type", other.name()))
+                            .err(codes::CATCH_NON_ERROR, t.span, format!("`{}` isn't an error type", self.m.tn(other)))
                             .with_label("catch an error type such as `RangeError`, or `Error` for every error");
                         self.push(d);
                         (ir::CatchFilter::All, Ty::Poison)
@@ -1019,8 +1222,8 @@ impl<'m, 'a> Body<'m, 'a> {
             return;
         }
         let mut d = self
-            .err(codes::MISMATCH, span, format!("expected {}, found {}", want.a_name(), v.ty.a_name()))
-            .with_label(format!("this is {}", v.ty.a_name()));
+            .err(codes::MISMATCH, span, format!("expected {}, found {}", self.m.an(want), self.m.an(v.ty)))
+            .with_label(format!("this is {}", self.m.an(v.ty)));
         let src = self.text(span);
         if want == Ty::Str && matches!(v.ty, Ty::Int | Ty::Float | Ty::Bool) {
             d = d.with_fix("convert it with a template string", Applicability::Safe, vec![self.edit(span, format!("`${{{src}}}`"))]);
@@ -1101,7 +1304,16 @@ impl<'m, 'a> Body<'m, 'a> {
 
     /// Checks call arguments whose call is already known to be wrong.
     fn check_args(&mut self, call: Option<(Span, &[ast::Arg])>) {
+        let ast = self.ast();
         for a in call.map_or(&[][..], |c| c.1) {
+            // An arrow function whose parameters have no types gets them from
+            // the call, which is already wrong: checking it alone would only
+            // report E0602 as well.
+            if let ExprKind::Arrow(arrow) = &ast.expr(a.expr).kind
+                && arrow.params.iter().any(|p| p.ty.is_none())
+            {
+                continue;
+            }
             self.expr(a.expr);
         }
     }
@@ -1148,18 +1360,47 @@ impl<'m, 'a> Body<'m, 'a> {
     fn unknown_member(&mut self, ty: Ty, name: &ast::Ident, call: Option<Span>) {
         let m = name.name.as_str();
         let what = if call.is_some() { "method" } else { "field" };
-        let mut d = self.err(codes::UNKNOWN_FIELD, name.span, format!("{} has no {what} `{m}`", ty.name()));
+        let mut d = self.err(codes::UNKNOWN_FIELD, name.span, format!("{} has no {what} `{m}`", self.m.tn(ty)));
         let no_args = |call: Span| self.text(Span::new(name.span.end, call.end)).split_whitespace().collect::<String>() == "()";
-        if let (Ty::Str, "length", Some(call)) = (ty, m, call) {
+        let recv = self.receiver(ty).map(|(r, _)| r);
+        let field = match recv {
+            Some(methods::Recv::List) => "length",
+            Some(_) => "size",
+            None => "length",
+        };
+        let names = match recv {
+            Some(r) => methods::names(r),
+            None => members(ty).to_vec(),
+        };
+        if let Some(call) = call.filter(|_| (ty == Ty::Str || recv.is_some()) && m == field) {
             // `s.length()`: it's a field.
-            d = d.with_label("`length` is a field, not a method");
+            d = d.with_label(format!("`{field}` is a field, not a method"));
             if no_args(call) {
-                d = d.with_fix("read the field", Applicability::Safe, vec![self.edit(Span::new(name.span.start, call.end), "length")]);
+                d = d.with_fix("read the field", Applicability::Safe, vec![self.edit(Span::new(name.span.start, call.end), field)]);
             }
-        } else {
-            if let Some(c) = closest(m, members(ty).iter().copied()) {
-                d = d.with_fix(format!("use `{c}`"), Applicability::Review, vec![self.edit(name.span, c)]);
-            }
+        } else if recv.is_some() && matches!(m, "length" | "size") && call.is_none() {
+            // `m.length` on a map, `xs.size` on a list: the other one.
+            d = d.with_label(format!("{} has `{field}`", self.m.tn(ty))).with_fix(
+                format!("read `{field}`"),
+                Applicability::Safe,
+                vec![self.edit(name.span, field)],
+            );
+        } else if recv == Some(methods::Recv::Map) && call.is_none() && self.receiver(ty).and_then(|(_, b)| b.k) == Some(ir::Type::Str) {
+            // `scores.alice`: maps have no dot access.
+            let dot = Span::new(name.span.start - 1, name.span.end);
+            d = d.with_label("read a map's values by key").with_fix(
+                format!("read the key \"{m}\""),
+                Applicability::Review,
+                vec![self.edit(dot, format!("[{m:?}]"))],
+            );
+        } else if let Some(c) = names.iter().copied().find(|c| {
+            c.len() == m.len() + 1 && c.eq_ignore_ascii_case(&format!("to{}", m.strip_suffix('d').unwrap_or(m)))
+                || *c == format!("to{}{}", m[..1].to_uppercase(), &m[1..])
+        }) {
+            // `sorted()`: the copy, `toSorted`, not `sort`, which changes the list.
+            d = d.with_fix(format!("use `{c}`"), Applicability::Review, vec![self.edit(name.span, c)]);
+        } else if let Some(c) = closest(m, names.iter().copied()) {
+            d = d.with_fix(format!("use `{c}`"), Applicability::Review, vec![self.edit(name.span, c)]);
         }
         self.push(d);
     }
@@ -1240,6 +1481,15 @@ impl<'m, 'a> Body<'m, 'a> {
                     return v;
                 }
                 let b = self.expr(*base);
+                if let Some(op) = self.collection_field(&b, &name.name) {
+                    return mk(ir::ExprKind::Method { op, args: vec![b.e], loc: NO_LOC }, Ty::Int);
+                }
+                if let Some((recv, _)) = self.receiver(b.ty)
+                    && (methods::names(recv).contains(&name.name.as_str()) || methods::mutating_name(&name.name))
+                {
+                    self.unsupported(span, "methods as values; call it with `()`");
+                    return poison();
+                }
                 match (b.ty, name.name.as_str()) {
                     (Ty::Error(_), "message") => mk(ir::ExprKind::ErrorMessage(Box::new(b.e)), Ty::Str),
                     (Ty::Str, "length") => builtin(ir::Builtin::StrLength, vec![b.e], NO_LOC),
@@ -1263,6 +1513,12 @@ impl<'m, 'a> Body<'m, 'a> {
             }
             ExprKind::Index { base, index } => {
                 let b = self.expr(*base);
+                if self.m.types.kind(b.ty.ir()).is_some() {
+                    return match self.collection_index(b, *index, span) {
+                        Some(v) => v,
+                        None => poison(),
+                    };
+                }
                 let i = coerce(self.expr(*index), Ty::Int);
                 match b.ty {
                     Ty::Str => {
@@ -1274,22 +1530,29 @@ impl<'m, 'a> Body<'m, 'a> {
                     }
                     Ty::Poison => poison(),
                     t => {
-                        let d = self.err(codes::BAD_OPERANDS, span, format!("{} can't be indexed", t.a_name()));
+                        let d = self.err(codes::BAD_OPERANDS, span, format!("{} can't be indexed", self.m.an(t)));
                         self.push(d);
                         poison()
                     }
                 }
             }
             ExprKind::StructLit { name, fields } => self.struct_lit(name, fields, span),
-            ExprKind::List(_) => {
-                self.unsupported(span, "lists");
+            ExprKind::List(_) | ExprKind::Map(_) | ExprKind::Arrow(_) => self.expr_want(id, None),
+            ExprKind::Spread(inner) => {
+                self.expr(*inner);
+                let d = self
+                    .err(codes::BAD_OPERANDS, span, "`...` goes only in a list, set or map literal, or before an argument")
+                    .with_label("it spreads the elements of a collection into a new one");
+                self.push(d);
                 poison()
             }
             ExprKind::Paren(inner) => self.expr(*inner),
             ExprKind::Cond { cond, then, els } => {
                 let c = self.condition(*cond);
                 let t = self.expr(*then);
-                let e = self.expr(*els);
+                // `ok ? xs : []`: the other branch takes a collection's type.
+                let want = if matches!(t.ty, Ty::Of(_)) { Some(t.ty) } else { None };
+                let e = self.expr_want(*els, want);
                 if t.ty == Ty::Poison || e.ty == Ty::Poison || c.ty == Ty::Poison {
                     return poison();
                 }
@@ -1302,7 +1565,7 @@ impl<'m, 'a> Body<'m, 'a> {
                 if want == Ty::Never {
                     return mk(ir::ExprKind::Cond { cond: Box::new(c.e), then: Box::new(t.e), els: Box::new(e.e) }, Ty::Never);
                 }
-                if t.ty != e.ty || !matches!(t.ty, Ty::Int | Ty::Float | Ty::Bool | Ty::Str) {
+                if t.ty != e.ty || !matches!(t.ty, Ty::Int | Ty::Float | Ty::Bool | Ty::Str | Ty::Of(_)) {
                     self.unsupported(span, "conditional expressions whose branches have different types");
                     return poison();
                 }
@@ -1336,7 +1599,7 @@ impl<'m, 'a> Body<'m, 'a> {
 
     fn bad_unary(&mut self, op: &str, ty: Ty, span: Span) -> TE {
         let want = if op == "-" { "a number" } else { "a bool" };
-        let d = self.err(codes::BAD_OPERANDS, span, format!("`{op}` needs {want}, not {}", ty.a_name()));
+        let d = self.err(codes::BAD_OPERANDS, span, format!("`{op}` needs {want}, not {}", self.m.an(ty)));
         self.push(d);
         poison()
     }
@@ -1360,11 +1623,24 @@ impl<'m, 'a> Body<'m, 'a> {
 
     fn name(&mut self, name: &str, span: Span) -> TE {
         if let Some(v) = self.lookup(name) {
-            let (local, ty) = (v.local, v.ty);
+            let (local, ty, level) = (v.local, v.ty, v.level);
+            if level < self.level() {
+                return match self.capture_use(name, span) {
+                    Some(l) => mk(ir::ExprKind::Local(l), ty),
+                    None => poison(),
+                };
+            }
+            if !self.check_in_use(local, level, name, span) {
+                return poison();
+            }
+            self.copy_used(local);
             return mk(ir::ExprKind::Local(local), ty);
         }
-        if self.m.by_name.contains_key(name) || matches!(name, "print" | "assert" | "fail" | "range") {
-            self.unsupported(span, "function values");
+        if let Some(&f) = self.m.by_name.get(name) {
+            return self.function_value(f, span);
+        }
+        if matches!(name, "print" | "assert" | "fail" | "range") {
+            self.unsupported(span, "built-in functions as values");
             return poison();
         }
         match self.m.imports.get(name).copied() {
@@ -1406,7 +1682,7 @@ impl<'m, 'a> Body<'m, 'a> {
                         t if t.is_printable() => out.push(mk(ir::ExprKind::ToStr(Box::new(v.e)), Ty::Str).e),
                         Ty::Poison => bad = true,
                         t => {
-                            let d = self.err(codes::MISMATCH, self.espan(*e), format!("{} can't be put into a string", t.a_name()));
+                            let d = self.err(codes::MISMATCH, self.espan(*e), format!("{} can't be put into a string", self.m.an(t)));
                             self.push(d);
                             bad = true;
                         }
@@ -1454,7 +1730,7 @@ impl<'m, 'a> Body<'m, 'a> {
                     return poison();
                 }
                 (a, b) => {
-                    let d = self.err(codes::BAD_OPERANDS, whole, format!("can't add {} and {}", a.name(), b.name()));
+                    let d = self.err(codes::BAD_OPERANDS, whole, format!("can't add {} and {}", self.m.tn(a), self.m.tn(b)));
                     self.push(d);
                     return poison();
                 }
@@ -1476,7 +1752,7 @@ impl<'m, 'a> Body<'m, 'a> {
         } else {
             (self.espan(operands[0]).to(self.espan(operands[at - 1])), prefix)
         };
-        let (a, b) = if prefix == Ty::Str { ("string", bad_ty.name()) } else { (bad_ty.name(), "string") };
+        let (a, b) = if prefix == Ty::Str { ("string".to_string(), self.m.tn(bad_ty)) } else { (self.m.tn(bad_ty), "string".to_string()) };
         let piece = |e: ExprId, out: &mut String| match &ast.expr(e).kind {
             ExprKind::Str(s) => out.push_str(&escape_template(s)),
             ExprKind::Template(_) => {
@@ -1521,7 +1797,7 @@ impl<'m, 'a> Body<'m, 'a> {
         let d = self.err(codes::STRING_PLUS, whole, format!("can't add {a} and {b}")).with_label(format!(
             "`{}` is {}",
             self.text(bad),
-            bad_ty.a_name()
+            self.m.an(bad_ty)
         ));
         let d = if ambiguous {
             d.with_fix("add the numbers first", Applicability::Option, vec![self.edit(whole, template(true))]).with_fix(
@@ -1541,7 +1817,15 @@ impl<'m, 'a> Body<'m, 'a> {
             return poison();
         }
         let l = self.expr(lhs);
-        let r = self.expr(rhs);
+        // `xs == []`: a literal on the right takes its type from the left.
+        let want = if op.is_comparison() && self.m.types.kind(l.ty.ir()).is_some() { Some(l.ty) } else { None };
+        let r = self.expr_want(rhs, want);
+        if op == BinOp::In
+            && l.ty != Ty::Poison
+            && let Some(v) = self.collection_in(l.clone(), r.clone(), span)
+        {
+            return v;
+        }
         self.combine(op, l, r, span)
     }
 
@@ -1577,13 +1861,16 @@ impl<'m, 'a> Body<'m, 'a> {
             // `item in text`: the item is evaluated first.
             BinOp::In if l.ty == Ty::Str && r.ty == Ty::Str => builtin(ir::Builtin::StrIn, vec![l.e, r.e], NO_LOC),
             BinOp::In if r.ty == Ty::Str => {
-                let d = self.err(codes::BAD_OPERANDS, span, format!("`in` a string needs a string on its left, not {}", l.ty.a_name()));
+                let d = self.err(codes::BAD_OPERANDS, span, format!("`in` a string needs a string on its left, not {}", self.m.an(l.ty)));
                 self.push(d);
                 poison()
             }
             BinOp::In if matches!(r.ty, Ty::Int | Ty::Float | Ty::Bool) || matches!(r.ty, Ty::Error(_)) => {
-                let d =
-                    self.err(codes::BAD_OPERANDS, span, format!("`in` needs a string or a collection on its right, not {}", r.ty.a_name()));
+                let d = self.err(
+                    codes::BAD_OPERANDS,
+                    span,
+                    format!("`in` needs a string or a collection on its right, not {}", self.m.an(r.ty)),
+                );
                 self.push(d);
                 poison()
             }
@@ -1603,7 +1890,7 @@ impl<'m, 'a> Body<'m, 'a> {
                 let d = self.err(
                     codes::BAD_OPERANDS,
                     span,
-                    format!("can't apply `{}` to {} and {}", op.as_str(), l.ty.a_name(), r.ty.a_name()),
+                    format!("can't apply `{}` to {} and {}", op.as_str(), self.m.an(l.ty), self.m.an(r.ty)),
                 );
                 self.push(d);
                 poison()
@@ -1636,7 +1923,7 @@ impl<'m, 'a> Body<'m, 'a> {
             && if ordered {
                 matches!(l.ty, Ty::Int | Ty::Float | Ty::Str)
             } else {
-                matches!(l.ty, Ty::Int | Ty::Float | Ty::Bool | Ty::Str)
+                matches!(l.ty, Ty::Int | Ty::Float | Ty::Bool | Ty::Str) || (matches!(l.ty, Ty::Of(_)) && self.m.types.equatable(l.ty.ir()))
             };
         if ok {
             return Some((cmp, l, r));
@@ -1648,8 +1935,18 @@ impl<'m, 'a> Body<'m, 'a> {
             self.unsupported(span, "comparing errors");
             return None;
         }
-        let d =
-            self.err(codes::BAD_OPERANDS, span, format!("can't compare {} and {} with `{}`", l.ty.a_name(), r.ty.a_name(), op.as_str()));
+        if l.ty == r.ty && matches!(l.ty, Ty::Of(_)) && !ordered {
+            let d = self
+                .err(codes::BAD_OPERANDS, span, format!("{} can't be compared with `{}`", self.m.an(l.ty), op.as_str()))
+                .with_label("function values can't be compared");
+            self.push(d);
+            return None;
+        }
+        let d = self.err(
+            codes::BAD_OPERANDS,
+            span,
+            format!("can't compare {} and {} with `{}`", self.m.an(l.ty), self.m.an(r.ty), op.as_str()),
+        );
         self.push(d);
         None
     }
@@ -1657,16 +1954,15 @@ impl<'m, 'a> Body<'m, 'a> {
     fn call(&mut self, id: ExprId, callee: ExprId, args: &[ast::Arg]) -> TE {
         let ast = self.ast();
         let span = self.espan(id);
-        for a in args {
-            if a.is_mut {
-                self.unsupported(span, "`mut` arguments");
-                return poison();
-            }
-        }
+        let want = self.call_want.take();
         match &ast.expr(callee).kind {
             ExprKind::Name(name) if self.lookup(name).is_none() => {
                 if let Some(&f) = self.m.by_name.get(name.as_str()) {
                     return self.call_function(f, span, args);
+                }
+                if self.not_mut(name, args) {
+                    self.check_args(Some((span, args)));
+                    return poison();
                 }
                 match self.m.imports.get(name.as_str()).copied() {
                     Some(Imported::Member(m, x)) => return self.std_call(m, x, span, args),
@@ -1690,8 +1986,10 @@ impl<'m, 'a> Body<'m, 'a> {
                     "assert" => return self.assert(span, args),
                     "fail" => return self.fail(span, args),
                     "range" => {
-                        self.unsupported(span, "`range` and lists");
-                        return poison();
+                        let Some((start, end, step)) = self.range_args(args, span) else { return poison() };
+                        let t = self.m.types.list(ir::Type::Int);
+                        let e = ir::ExprKind::Method { op: ir::Method::Range, args: vec![start, end, step], loc: self.loc(span) };
+                        return mk(e, Ty::of(t));
                     }
                     _ => {}
                 }
@@ -1705,7 +2003,7 @@ impl<'m, 'a> Body<'m, 'a> {
                 if let Some(v) = self.namespace_member(*base, name, Some((span, args))) {
                     return v;
                 }
-                self.method_call(*base, name, args, span)
+                self.method_call(*base, name, args, span, want)
             }
             ExprKind::Field { base, optional: true, .. } => {
                 self.expr(*base);
@@ -1714,14 +2012,39 @@ impl<'m, 'a> Body<'m, 'a> {
                 poison()
             }
             _ => {
-                self.unsupported(span, "calls of function values");
-                poison()
+                let c = self.expr(callee);
+                if c.ty == Ty::Poison {
+                    self.check_args(Some((span, args)));
+                    return poison();
+                }
+                self.call_value(c, callee, args, span)
             }
         }
     }
 
+    /// E0659 for each `mut` argument of a call whose parameters aren't
+    /// `mut`. Returns whether there was one.
+    fn not_mut(&mut self, name: &str, args: &[ast::Arg]) -> bool {
+        let mut any = false;
+        for a in args.iter().filter(|a| a.is_mut) {
+            let d = self.not_mut_arg(name, a.expr);
+            self.push(d);
+            any = true;
+        }
+        any
+    }
+
+    /// E0659, with the fix that removes `mut `.
+    fn not_mut_arg(&self, name: &str, arg: ExprId) -> Diagnostic {
+        let start = self.espan(arg).start;
+        let before = &self.src_text()[..start as usize];
+        let kw = before.trim_end().len() as u32 - 3;
+        let span = Span::new(kw, start);
+        self.err(codes::NOT_MUT, Span::new(kw, self.espan(arg).end), format!("`{name}` doesn't change this argument, so it takes no `mut`"))
+            .with_fix("remove `mut`", Applicability::Safe, vec![self.edit(span, "")])
+    }
+
     fn call_function(&mut self, f: ir::FuncId, span: Span, args: &[ast::Arg]) -> TE {
-        let checked: Vec<TE> = args.iter().map(|a| self.expr(a.expr)).collect();
         if matches!(self.m.sigs[f.0 as usize].ret, Ret::Infer) {
             self.m.check_function(f);
         }
@@ -1729,32 +2052,74 @@ impl<'m, 'a> Body<'m, 'a> {
         let name = sig.name.clone();
         let params = sig.params.clone();
         let required = params.len() - sig.defaults;
-        let ret = match sig.ret {
-            Ret::Known(t) => t,
-            Ret::InProgress | Ret::Infer => {
-                let d = self
-                    .err(codes::UNSUPPORTED, span, format!("`{name}` calls itself, so it needs a declared return type"))
-                    .with_label("inferring the return type of a recursive function isn't supported yet");
-                self.push(d);
-                return poison();
-            }
-        };
+        let ret = sig.ret_known();
         if args.len() < required || args.len() > params.len() {
+            self.check_args(Some((span, args)));
             self.arity(&name, span, required, params.len(), args.len());
             return poison();
         }
         let mut bad = false;
-        let mut lowered = Vec::with_capacity(checked.len());
-        for ((v, (_, want)), a) in checked.into_iter().zip(&params).zip(args) {
-            if v.ty == Ty::Poison {
-                bad = true;
+        let mut lowered = Vec::with_capacity(args.len());
+        // The places passed `mut`, so one call can't pass one twice (E0657).
+        let mut passed: Vec<mut_args::MutArg> = Vec::new();
+        let mut overlaps = mut_args::Overlaps::default();
+        let (changes_from, stmt, value) = (self.f.changed.len(), self.stmt, self.stmt_value);
+        for (a, (pname, want, is_mut)) in args.iter().zip(&params) {
+            let (want, is_mut) = (*want, *is_mut);
+            match (is_mut, a.is_mut) {
+                (true, true) => {
+                    let Some(p) = self.changeable_place(a.expr, "modified") else {
+                        bad = true;
+                        continue;
+                    };
+                    if p.ty != want && p.ty != Ty::Poison && want != Ty::Poison {
+                        let d = self
+                            .err(codes::MISMATCH, self.espan(a.expr), format!("expected {}, found {}", self.m.an(want), self.m.an(p.ty)))
+                            .with_label(format!("`{pname}` is `mut`, so the argument must have exactly its type"));
+                        self.push(d);
+                        bad = true;
+                    }
+                    let arg = mut_args::MutArg { place: p.place, span: self.espan(a.expr), param: pname.clone() };
+                    bad |= self.mut_twice(&passed, &arg, &p.root_name, changes_from, &mut overlaps);
+                    self.copy_used(arg.place.root);
+                    lowered.push(mk(ir::ExprKind::Ref(arg.place.clone()), p.ty).e);
+                    passed.push(arg);
+                }
+                (true, false) => {
+                    let v = self.expr(a.expr);
+                    if v.ty != Ty::Poison {
+                        let at = self.espan(a.expr).start;
+                        let d = self
+                            .err(codes::NEEDS_MUT, self.espan(a.expr), format!("`{name}` changes `{pname}`, so pass it with `mut`"))
+                            .with_label("every call shows which values it may change")
+                            .with_fix("pass it with `mut`", Applicability::Safe, vec![self.insert(at, "mut ")]);
+                        self.push(d);
+                    }
+                    bad = true;
+                }
+                (false, true) => {
+                    self.expr(a.expr);
+                    let d = self.not_mut_arg(&name, a.expr);
+                    self.push(d);
+                    bad = true;
+                }
+                (false, false) => {
+                    let v = coerce(self.expr_want(a.expr, Some(want)), want);
+                    let before = self.m.diags.len();
+                    self.expect_type(&v, want, self.espan(a.expr));
+                    bad |= v.ty == Ty::Poison || self.m.diags.len() > before;
+                    lowered.push(v.e);
+                }
             }
-            let v = coerce(v, *want);
-            let before = self.m.diags.len();
-            self.expect_type(&v, *want, self.espan(a.expr));
-            bad |= self.m.diags.len() > before;
-            lowered.push(v.e);
         }
+        self.mut_twice_fix(&passed, &overlaps, span, stmt, value, changes_from);
+        let Some(ret) = ret else {
+            let d = self
+                .err(codes::UNSUPPORTED, span, format!("`{name}` calls itself, so it needs a declared return type"))
+                .with_label("inferring the return type of a recursive function isn't supported yet");
+            self.push(d);
+            return poison();
+        };
         if bad || ret == Ty::Poison {
             return poison();
         }
@@ -1811,8 +2176,14 @@ impl<'m, 'a> Body<'m, 'a> {
     }
 
     /// `x.name(args)` on an `int`, a `float`, a `string` or an error (§04).
-    fn method_call(&mut self, base: ExprId, name: &ast::Ident, args: &[ast::Arg], span: Span) -> TE {
+    /// `want` is the type the call is expected to have, if any.
+    fn method_call(&mut self, base: ExprId, name: &ast::Ident, args: &[ast::Arg], span: Span, want: Option<Ty>) -> TE {
         let m = name.name.as_str();
+        if methods::mutating_name(m)
+            && let Some(v) = self.mutating_call(base, name, args, span)
+        {
+            return v;
+        }
         let exact = match method(Ty::Float, m) {
             Some(Method::Op(op, _)) => op.on_int_division(),
             _ => None,
@@ -1832,10 +2203,28 @@ impl<'m, 'a> Body<'m, 'a> {
         } else {
             self.expr(base)
         };
-        let checked: Vec<(TE, Span)> = args.iter().map(|a| (self.expr(a.expr), self.espan(a.expr))).collect();
         if b.ty == Ty::Poison {
+            self.check_args(Some((span, args)));
             return poison();
         }
+        if self.receiver(b.ty).is_some() {
+            if m == "forEach" && args.len() == 1 {
+                let fix = self.foreach_loop_fix(span, base, args[0].expr);
+                let saved = std::mem::replace(&mut self.foreach_fix, fix);
+                let v = self.collection_call(b, name, args, span, want);
+                self.foreach_fix = saved;
+                return v.unwrap_or_else(poison);
+            }
+            return self.collection_call(b, name, args, span, want).unwrap_or_else(poison);
+        }
+        if b.ty == Ty::Str && m == "split" {
+            return self.split(b, args, span);
+        }
+        if self.not_mut(m, args) {
+            self.check_args(Some((span, args)));
+            return poison();
+        }
+        let checked: Vec<(TE, Span)> = args.iter().map(|a| (self.expr(a.expr), self.espan(a.expr))).collect();
         if m == "toString" {
             if !args.is_empty() {
                 self.arity("toString", span, 0, 0, args.len());
@@ -1845,7 +2234,7 @@ impl<'m, 'a> Body<'m, 'a> {
                 Ty::Str => b,
                 t if t.is_printable() => mk(ir::ExprKind::ToStr(Box::new(b.e)), Ty::Str),
                 t => {
-                    let d = self.err(codes::BAD_OPERANDS, span, format!("{} has no `toString`", t.a_name()));
+                    let d = self.err(codes::BAD_OPERANDS, span, format!("{} has no `toString`", self.m.an(t)));
                     self.push(d);
                     poison()
                 }
@@ -1881,6 +2270,23 @@ impl<'m, 'a> Body<'m, 'a> {
         builtin(op, all, self.loc(span))
     }
 
+    /// `s.split(separator)`: a list of the parts; an empty separator gives
+    /// the characters.
+    fn split(&mut self, b: TE, args: &[ast::Arg], span: Span) -> TE {
+        if args.len() != 1 {
+            self.check_args(Some((span, args)));
+            self.arity("split", span, 1, 1, args.len());
+            return poison();
+        }
+        let sep = self.expr_want(args[0].expr, Some(Ty::Str));
+        self.expect_type(&sep, Ty::Str, self.espan(args[0].expr));
+        if sep.ty != Ty::Str {
+            return poison();
+        }
+        let t = self.m.types.list(ir::Type::Str);
+        mk(ir::ExprKind::Method { op: ir::Method::StrSplit, args: vec![b.e, sep.e], loc: NO_LOC }, Ty::of(t))
+    }
+
     /// A standard library function, called: the first of its forms that
     /// takes the arguments' types decides the operation (`stdlib::Func`).
     fn std_call(&mut self, m: &stdlib::StdModule, x: &stdlib::Member, span: Span, args: &[ast::Arg]) -> TE {
@@ -1900,6 +2306,9 @@ impl<'m, 'a> Body<'m, 'a> {
             }
         };
         let loc = self.loc(span);
+        if let Some(a) = args.iter().find(|a| matches!(self.ast().expr(a.expr).kind, ExprKind::Spread(_))) {
+            return self.std_spread(x, f, a.expr, args.len(), span);
+        }
         let (min, max) = f.arity();
         if args.len() < min || args.len() > max {
             self.check_args(Some((span, args)));
@@ -1925,7 +2334,7 @@ impl<'m, 'a> Body<'m, 'a> {
                 bad = true;
             } else if !f.forms.iter().any(|&form| takes(form, i, v.ty)) {
                 let wanted: Vec<Ty> = f.forms.iter().map(|&form| ty_of(f.param(form, i))).collect();
-                let message = format!("`{}` needs {}, and this is {}", x.name, wanted_types(&wanted), v.ty.a_name());
+                let message = format!("`{}` needs {}, and this is {}", x.name, wanted_types(&wanted), self.m.an(v.ty));
                 let d = self.err(codes::MISMATCH, self.espan(args[i].expr), message);
                 self.push(d);
                 bad = true;
@@ -1935,7 +2344,7 @@ impl<'m, 'a> Body<'m, 'a> {
             return poison();
         }
         let Some(&form) = f.forms.iter().find(|&&form| vals.iter().enumerate().all(|(i, v)| takes(form, i, v.ty))) else {
-            let types: Vec<&str> = vals.iter().map(|v| v.ty.name()).collect();
+            let types: Vec<String> = vals.iter().map(|v| self.m.tn(v.ty)).collect();
             let d = self.err(codes::MISMATCH, span, format!("`{}` doesn't take ({})", x.name, types.join(", ")));
             self.push(d);
             return poison();
@@ -1951,6 +2360,43 @@ impl<'m, 'a> Body<'m, 'a> {
         }
     }
 
+    /// `max(...xs)` and the other functions that take any number of
+    /// values, given a list: a list that's empty throws a `RangeError`.
+    fn std_spread(&mut self, x: &stdlib::Member, f: &stdlib::Func, spread: ExprId, count: usize, span: Span) -> TE {
+        let ExprKind::Spread(inner) = self.ast().expr(spread).kind else { unreachable!() };
+        if !f.variadic || count != 1 {
+            self.expr(inner);
+            let what = if f.variadic { "a spread list as its only argument" } else { "`...`" };
+            let d = self.err(codes::BAD_OPERANDS, self.espan(spread), format!("`{}` doesn't take {what}", x.name));
+            self.push(d);
+            return poison();
+        }
+        let v = self.expr(inner);
+        let elem = self.m.types.list_elem(v.ty.ir()).map(Ty::of);
+        let op = |t: Ty| -> Option<ir::Method> {
+            f.forms.iter().find_map(|form| match form {
+                stdlib::Form::Op(ir::Builtin::IntMax) if t == Ty::Int => Some(ir::Method::MaxInts),
+                stdlib::Form::Op(ir::Builtin::IntMin) if t == Ty::Int => Some(ir::Method::MinInts),
+                stdlib::Form::Op(ir::Builtin::FloatMax) if t == Ty::Float => Some(ir::Method::MaxFloats),
+                stdlib::Form::Op(ir::Builtin::FloatMin) if t == Ty::Float => Some(ir::Method::MinFloats),
+                _ => None,
+            })
+        };
+        match elem.and_then(|t| op(t).map(|o| (t, o))) {
+            Some((t, op)) => mk(ir::ExprKind::Method { op, args: vec![v.e], loc: self.loc(span) }, t),
+            None if v.ty == Ty::Poison => poison(),
+            None => {
+                let d = self.err(
+                    codes::MISMATCH,
+                    self.espan(inner),
+                    format!("`{}` needs a list of numbers, and this is {}", x.name, self.m.an(v.ty)),
+                );
+                self.push(d);
+                poison()
+            }
+        }
+    }
+
     /// Converts a value for `print` or a template: strings as they are, other values with `toString()`.
     fn stringify(&mut self, v: TE, span: Span) -> Option<ir::Expr> {
         let v = coerce(v, Ty::Str);
@@ -1959,7 +2405,7 @@ impl<'m, 'a> Body<'m, 'a> {
             t if t.is_printable() => Some(mk(ir::ExprKind::ToStr(Box::new(v.e)), Ty::Str).e),
             Ty::Poison => None,
             t => {
-                let d = self.err(codes::MISMATCH, span, format!("{} can't be printed", t.a_name()));
+                let d = self.err(codes::MISMATCH, span, format!("{} can't be printed", self.m.an(t)));
                 self.push(d);
                 None
             }
@@ -2005,7 +2451,8 @@ impl<'m, 'a> Body<'m, 'a> {
         let cond = match &ast.expr(cond_id).kind {
             ExprKind::Binary { op, lhs, rhs } if op.is_comparison() => {
                 let l = self.expr(*lhs);
-                let r = self.expr(*rhs);
+                let want = if self.m.types.kind(l.ty.ir()).is_some() { Some(l.ty) } else { None };
+                let r = self.expr_want(*rhs, want);
                 if l.ty == Ty::Poison || r.ty == Ty::Poison {
                     None
                 } else {
@@ -2108,12 +2555,7 @@ fn float_arith(op: ir::FloatOp, l: TE, r: TE) -> TE {
 }
 
 fn ty_of(t: ir::Type) -> Ty {
-    match t {
-        ir::Type::Int => Ty::Int,
-        ir::Type::Float => Ty::Float,
-        ir::Type::Bool => Ty::Bool,
-        _ => Ty::Str,
-    }
+    Ty::of(t)
 }
 
 /// The argument a function wants, from the types its forms take there.
@@ -2124,8 +2566,10 @@ fn wanted_types(types: &[Ty]) -> String {
     }
     let mut names: Vec<String> = Vec::new();
     for t in types {
-        if !names.contains(&t.a_name()) {
-            names.push(t.a_name());
+        let name = t.ir().prim_name();
+        let a = if name.starts_with(['a', 'e', 'i', 'o', 'u']) { format!("an {name}") } else { format!("a {name}") };
+        if !names.contains(&a) {
+            names.push(a);
         }
     }
     names.join(" or ")
@@ -2184,7 +2628,6 @@ fn method(ty: Ty, name: &str) -> Option<Method> {
         (Ty::Str, "repeat") => Op(StrRepeat, &[]),
         (Ty::Str, "padStart") => Op(StrPadStart, &[Default::Str(" ")]),
         (Ty::Str, "padEnd") => Op(StrPadEnd, &[Default::Str(" ")]),
-        (Ty::Str, "split") => Later("`split`, which returns a list"),
         (Ty::Str, "toInt" | "toFloat") => Later("declared errors (`toInt` and `toFloat` on a string throw `ValueError`)"),
         _ => return None,
     })
@@ -2237,6 +2680,13 @@ fn has_call(ast: &ast::Ast, e: ExprId) -> bool {
         ExprKind::Field { base, .. } => has_call(ast, *base),
         ExprKind::StructLit { fields, .. } => fields.iter().any(|(_, v)| has_call(ast, *v)),
         ExprKind::List(items) => any(items),
+        ExprKind::Map(entries) => entries.iter().any(|en| match en {
+            ast::MapEntry::Named(_, v) => has_call(ast, *v),
+            ast::MapEntry::Keyed(k, v) => any(&[*k, *v]),
+            ast::MapEntry::Spread(x) => has_call(ast, *x),
+        }),
+        ExprKind::Spread(x) => has_call(ast, *x),
+        ExprKind::Arrow(_) => false,
         ExprKind::Cond { cond, then, els } => any(&[*cond, *then, *els]),
     }
 }
@@ -2283,8 +2733,10 @@ fn terminates(b: &ir::Block) -> bool {
 fn stmt_terminates(s: &ir::Stmt) -> bool {
     match s {
         ir::Stmt::Return(_) | ir::Stmt::Throw(..) => true,
-        ir::Stmt::Expr(e) | ir::Stmt::Let(_, e) | ir::Stmt::Set(_, e) => e.ty == ir::Type::Never,
+        ir::Stmt::Expr(e) | ir::Stmt::Let(_, e) | ir::Stmt::Set(_, e, _) | ir::Stmt::Store(_, e) => e.ty == ir::Type::Never,
         ir::Stmt::If(_, a, b) => terminates(a) && terminates(b),
+        // The collection may be empty, so the body may never run.
+        ir::Stmt::ForOf { .. } | ir::Stmt::ForMut { .. } => false,
         ir::Stmt::Try { body, catches } => terminates(body) && catches.iter().all(|c| terminates(&c.body)),
         ir::Stmt::Loop { cond, body, .. } => {
             matches!(cond.as_ref().map(|c| &c.kind), None | Some(ir::ExprKind::Bool(true))) && !breaks(body)

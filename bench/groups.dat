@@ -1,0 +1,16 @@
+// Shown by `dat-conformance perf`: grouping into a map of lists, taking
+// each list out and putting it back (§02), which never copies it.
+function main(): void {
+  let byTeam: map<int, list<int>> = {};
+  for (const i of range(1_000_000)) {
+    const team = (i * 31) % 1000;
+    let members = byTeam.get(team, []);
+    members.push(i);
+    byTeam[team] = members;
+  }
+  let total = 0;
+  for (const [team, members] of byTeam) {
+    total += members.length;
+  }
+  print(byTeam.size, total, byTeam[7].length, byTeam[7][0]);
+}

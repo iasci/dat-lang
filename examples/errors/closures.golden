@@ -1,0 +1,126 @@
+# Golden results for closures.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0602]: can't infer the type of x
+ --> closures.dat:8:15
+8 |   const fn = (x) => x * 2;
+  |               ^ give the parameter a type, or pass the function where a function type is expected
+option: declare `x: int`
+8 |   const fn = (x: int) => x * 2;
+option: declare `x: float`
+8 |   const fn = (x: float) => x * 2;
+
+error[E0603]: closures can't use the `let` variable `total`
+  --> closures.dat:12:5
+12 |     total += item;
+   |     ^^^^^ a closure keeps a copy of what it uses, so it may only use what can't change: use a loop, or `reduce`
+fix: use a `for...of` loop
+11 |   for (const item of items) {
+12 |     total += item;
+13 |   }
+
+error[E0603]: closures can't use the `let` variable `total`
+  --> closures.dat:14:25
+14 |   const g = (x: int) => total + x;
+   |                         ^^^^^ a closure keeps a copy of what it uses, so it may only use what can't change: use a loop, or `reduce`
+
+error[E0250]: expected a function `(int) => int`, found one with 2 parameters
+  --> closures.dat:15:18
+15 |   print(apply(1, (a, b) => a), apply(1, (s: string) => 1), apply("x", (n) => n));
+   |                  ^^^^^^^^^ the function passed here takes 1 parameter
+
+error[E0250]: this parameter is a string, but the callback gets an int
+  --> closures.dat:15:42
+15 |   print(apply(1, (a, b) => a), apply(1, (s: string) => 1), apply("x", (n) => n));
+   |                                          ^^^^^^^^^
+
+error[E0250]: expected an int, found a string
+  --> closures.dat:15:66
+15 |   print(apply(1, (a, b) => a), apply(1, (s: string) => 1), apply("x", (n) => n));
+   |                                                                  ^^^ this is a string
+
+error[E0650]: `h` takes 1 argument, but 2 were given
+  --> closures.dat:17:9
+17 |   print(h(1, 2), h("one"), h == h, items(0));
+   |         ^^^^^^^
+
+error[E0250]: expected an int, found a string
+  --> closures.dat:17:20
+17 |   print(h(1, 2), h("one"), h == h, items(0));
+   |                    ^^^^^ this is a string
+
+error[E0350]: a function `(int) => int` can't be compared with `==`
+  --> closures.dat:17:28
+17 |   print(h(1, 2), h("one"), h == h, items(0));
+   |                            ^^^^^^ function values can't be compared
+
+error[E0350]: `items` isn't a function: it's a list<int>
+  --> closures.dat:17:36
+17 |   print(h(1, 2), h("one"), h == h, items(0));
+   |                                    ^^^^^^^^
+10 errors, 1 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0602]: can't infer the type of x
+ --> closures.dat:8:15
+8 |   const fn = (x) => x * 2;
+  |               ^ give the parameter a type, or pass the function where a function type is expected
+option: declare `x: int`
+8 |   const fn = (x: int) => x * 2;
+option: declare `x: float`
+8 |   const fn = (x: float) => x * 2;
+
+error[E0603]: closures can't use the `let` variable `total`
+  --> closures.dat:12:5
+12 |     total += item;
+   |     ^^^^^ a closure keeps a copy of what it uses, so it may only use what can't change: use a loop, or `reduce`
+fix: use a `for...of` loop
+11 |   for (const item of items) {
+12 |     total += item;
+13 |   }
+
+error[E0603]: closures can't use the `let` variable `total`
+  --> closures.dat:14:25
+14 |   const g = (x: int) => total + x;
+   |                         ^^^^^ a closure keeps a copy of what it uses, so it may only use what can't change: use a loop, or `reduce`
+
+error[E0250]: expected a function `(int) => int`, found one with 2 parameters
+  --> closures.dat:15:18
+15 |   print(apply(1, (a, b) => a), apply(1, (s: string) => 1), apply("x", (n) => n));
+   |                  ^^^^^^^^^ the function passed here takes 1 parameter
+
+error[E0250]: this parameter is a string, but the callback gets an int
+  --> closures.dat:15:42
+15 |   print(apply(1, (a, b) => a), apply(1, (s: string) => 1), apply("x", (n) => n));
+   |                                          ^^^^^^^^^
+
+error[E0250]: expected an int, found a string
+  --> closures.dat:15:66
+15 |   print(apply(1, (a, b) => a), apply(1, (s: string) => 1), apply("x", (n) => n));
+   |                                                                  ^^^ this is a string
+
+error[E0650]: `h` takes 1 argument, but 2 were given
+  --> closures.dat:17:9
+17 |   print(h(1, 2), h("one"), h == h, items(0));
+   |         ^^^^^^^
+
+error[E0250]: expected an int, found a string
+  --> closures.dat:17:20
+17 |   print(h(1, 2), h("one"), h == h, items(0));
+   |                    ^^^^^ this is a string
+
+error[E0350]: a function `(int) => int` can't be compared with `==`
+  --> closures.dat:17:28
+17 |   print(h(1, 2), h("one"), h == h, items(0));
+   |                            ^^^^^^ function values can't be compared
+
+error[E0350]: `items` isn't a function: it's a list<int>
+  --> closures.dat:17:36
+17 |   print(h(1, 2), h("one"), h == h, items(0));
+   |                                    ^^^^^^^^
+10 errors, 1 fixable with dat fix

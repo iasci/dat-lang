@@ -1,0 +1,10 @@
+// Shown by `dat-conformance perf`: `map`, `filter` and `reduce` with arrow
+// functions.
+function main(): void {
+  const nums = range(1_000_000);
+  let total = 0;
+  for (const round of range(5)) {
+    total += nums.map((x) => x * 3 + round).filter((x) => x % 2 == 0).reduce((acc, x) => acc + x, 0);
+  }
+  print(total, nums.some((x) => x == 999_999), nums.count((x) => x % 7 == 0));
+}

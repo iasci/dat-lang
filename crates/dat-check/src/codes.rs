@@ -15,8 +15,18 @@ pub const MISMATCH: &str = "E0250";
 pub const LET_NO_VALUE: &str = "E0203";
 /// §02: no type and no value.
 pub const NO_TYPE_NO_VALUE: &str = "E0204";
+/// §01: a tuple index that isn't a constant, or is past the tuple's end.
+pub const TUPLE_INDEX: &str = "E0101";
 /// §01: a number literal outside the range of its type.
 pub const LITERAL_RANGE: &str = "E0150";
+/// §01: a set element, map key or grouping key whose type isn't hashable.
+pub const NOT_HASHABLE: &str = "E0151";
+/// §01: sorting or searching values whose type can't be ordered or compared.
+pub const NOT_COMPARABLE: &str = "E0152";
+/// §02: a `let` copy is changed and never read afterwards.
+pub const COPY_UNUSED: &str = "E0202";
+/// §02: `[]` or `{}` where no type says what it holds.
+pub const CANT_INFER: &str = "E0206";
 
 /// §02: const must be initialized.
 pub const CONST_NO_VALUE: &str = "E0205";
@@ -40,16 +50,29 @@ pub const BAD_OPERANDS: &str = "E0350";
 pub const MISSING_RETURN: &str = "E0601";
 /// §06: wrong number of arguments.
 pub const ARITY: &str = "E0650";
+/// §06: a `mut` parameter with a default value.
+pub const MUT_DEFAULT: &str = "E0651";
 /// §06: `return` with a value in a `void` function.
 pub const RETURN_IN_VOID: &str = "E0652";
 /// §06: `return;` in a function that returns a value.
 pub const RETURN_NO_VALUE: &str = "E0653";
 /// §06: a `never` function that can return.
 pub const NEVER_RETURNS: &str = "E0654";
+/// §06: an arrow function's parameter type can't be inferred.
+pub const PARAM_TYPE_UNKNOWN: &str = "E0602";
+/// §06: a closure uses a `let` variable.
+pub const CAPTURES_LET: &str = "E0603";
 /// §06: an exported function without a declared return type.
 pub const EXPORT_NEEDS_TYPE: &str = "E0655";
 /// §06: a parameter without a default after one with a default.
 pub const DEFAULT_ORDER: &str = "E0656";
+/// §06: one call passes the same value as `mut` twice, a value and a part of it,
+/// or two parts that may be the same one.
+pub const MUT_TWICE: &str = "E0657";
+/// §06: an argument for a `mut` parameter without `mut`.
+pub const NEEDS_MUT: &str = "E0658";
+/// §06: `mut` before an argument whose parameter isn't `mut`.
+pub const NOT_MUT: &str = "E0659";
 /// §06: no `main`, for `dat run` and `dat build`.
 pub const NO_MAIN: &str = "E0660";
 /// §06: `main` has parameters or doesn't return `void`.
@@ -57,6 +80,8 @@ pub const BAD_MAIN: &str = "E0661";
 
 /// §07: condition must be bool.
 pub const NOT_BOOL: &str = "E0701";
+/// §07: the list of a `for (mut x of xs)` loop used in its body.
+pub const IN_USE_BY_LOOP: &str = "E0703";
 /// §07: `break` or `continue` outside a loop.
 pub const OUTSIDE_LOOP: &str = "E0750";
 

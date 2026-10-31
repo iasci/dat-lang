@@ -35,6 +35,7 @@ pub fn parse(file: FileId, text: &str) -> Parsed {
         fatal: false,
         speculating: false,
         seen_declaration: false,
+        split: false,
     };
     p.items();
     let Parser { ast, diags, .. } = p;
@@ -61,6 +62,9 @@ struct Parser<'a> {
     speculating: bool,
     /// A declaration other than an import has been read.
     seen_declaration: bool,
+    /// The token at `pos` is a `>=` whose `>` closed a type, as in
+    /// `list<int>= []`: what's left of it reads as `=`.
+    split: bool,
 }
 
 /// Deeper nesting is an error, so no later stage can overflow its stack.
@@ -71,7 +75,8 @@ impl<'a> Parser<'a> {
 
     fn tok(&self, k: usize) -> Token {
         let i = (self.pos + k).min(self.sig.len() - 1);
-        self.tokens[self.sig[i] as usize]
+        let t = self.tokens[self.sig[i] as usize];
+        if k == 0 && self.split { Token { kind: T::Eq, span: Span { start: t.span.start + 1, end: t.span.end } } } else { t }
     }
 
     fn peek(&self) -> T {
@@ -92,10 +97,22 @@ impl<'a> Parser<'a> {
 
     fn bump(&mut self) -> Token {
         let t = self.tok(0);
+        self.split = false;
         if self.pos < self.sig.len() - 1 {
             self.pos += 1;
         }
         t
+    }
+
+    /// The `>` that closes type arguments. A `>=` right after them, as in
+    /// `list<int>= []`, is that `>` and an `=`.
+    fn close_angle(&mut self) -> PResult<Token> {
+        if self.at(T::Ge) && !self.split {
+            let t = self.tok(0);
+            self.split = true;
+            return Ok(Token { kind: T::Gt, span: Span { start: t.span.start, end: t.span.start + 1 } });
+        }
+        self.expect(T::Gt, "`>` or `,` in the type")
     }
 
     fn eat(&mut self, kind: T) -> bool {
@@ -187,7 +204,13 @@ impl<'a> Parser<'a> {
 
     /// End of the previous significant token.
     fn prev_end(&self) -> u32 {
-        if self.pos == 0 { 0 } else { self.tokens[self.sig[self.pos - 1] as usize].span.end }
+        if self.split {
+            self.tokens[self.sig[self.pos] as usize].span.start + 1
+        } else if self.pos == 0 {
+            0
+        } else {
+            self.tokens[self.sig[self.pos - 1] as usize].span.end
+        }
     }
 
     fn text_of(&self, span: Span) -> &'a str {
@@ -279,13 +302,14 @@ impl<'a> Parser<'a> {
     /// Runs `f`, then undoes everything it parsed and reported. True when
     /// `f` succeeds without reporting anything.
     fn speculate(&mut self, f: impl FnOnce(&mut Self) -> bool) -> bool {
-        let (pos, items, exprs, stmts, broken) =
-            (self.pos, self.ast.items.len(), self.ast.exprs.len(), self.ast.stmts.len(), self.ast.broken.len());
+        let (pos, split, items, exprs, stmts, broken) =
+            (self.pos, self.split, self.ast.items.len(), self.ast.exprs.len(), self.ast.stmts.len(), self.ast.broken.len());
         let (diags, depth, fatal, seen_declaration) = (self.diags.len(), self.depth, self.fatal, self.seen_declaration);
         let was = std::mem::replace(&mut self.speculating, true);
         let ok = f(self) && self.diags.len() == diags;
         self.speculating = was;
         self.pos = pos;
+        self.split = split;
         self.ast.items.truncate(items);
         self.ast.exprs.truncate(exprs);
         self.ast.stmts.truncate(stmts);
@@ -596,8 +620,19 @@ impl<'a> Parser<'a> {
         match t.kind {
             T::Ident if matches!(self.text_of(t.span), "list" | "set" | "map") => {
                 self.bump();
-                let span = if self.at(T::Lt) { t.span.to(self.skip_group()?) } else { t.span };
-                Ok(TypeExpr { kind: TypeKind::Unsupported("collection types"), span })
+                let name = self.text_of(t.span).to_string();
+                let mut args = Vec::new();
+                let mut span = t.span;
+                if self.eat(T::Lt) {
+                    loop {
+                        args.push(self.type_expr()?);
+                        if !self.eat(T::Comma) {
+                            break;
+                        }
+                    }
+                    span = span.to(self.close_angle()?.span);
+                }
+                Ok(TypeExpr { kind: TypeKind::Collection { name, args }, span })
             }
             T::Ident | T::Keyword(Kw::Null) => {
                 self.bump();
@@ -622,17 +657,40 @@ impl<'a> Parser<'a> {
                 Ok(TypeExpr { kind: TypeKind::Named(name), span })
             }
             T::LBracket => {
-                let span = self.skip_group()?;
-                Ok(TypeExpr { kind: TypeKind::Unsupported("tuple types"), span })
+                self.bump();
+                let mut items = Vec::new();
+                while !self.at(T::RBracket) {
+                    items.push(self.type_expr()?);
+                    if !self.eat(T::Comma) {
+                        break;
+                    }
+                }
+                let close = self.expect(T::RBracket, "`]` or `,` in the tuple type")?;
+                Ok(TypeExpr { kind: TypeKind::Tuple(items), span: t.span.to(close.span) })
             }
             T::LParen => {
-                let mut span = self.skip_group()?;
+                self.bump();
+                let mut params = Vec::new();
+                while !self.at(T::RParen) {
+                    // `(value: int) => ...`: the name is documentation only.
+                    if matches!(self.peek(), T::Ident | T::Keyword(_)) && self.peek_at(1) == T::Colon {
+                        self.bump();
+                        self.bump();
+                    }
+                    params.push(self.type_expr()?);
+                    if !self.eat(T::Comma) {
+                        break;
+                    }
+                }
+                self.expect(T::RParen, "`)` or `,` in the function type")?;
                 self.expect(T::Arrow, "`=>` in a function type")?;
-                span = span.to(self.type_postfix()?.span);
+                let ret = self.type_postfix()?;
+                let mut span = t.span.to(ret.span);
                 if self.eat_word("throws") {
                     span = span.to(self.type_postfix()?.span);
+                    return Ok(TypeExpr { kind: TypeKind::Unsupported("declared errors (`throws`) in function types"), span });
                 }
-                Ok(TypeExpr { kind: TypeKind::Unsupported("function types"), span })
+                Ok(TypeExpr { kind: TypeKind::Func { params, ret: Box::new(ret) }, span })
             }
             _ => {
                 let found = self.describe(t);
@@ -803,13 +861,56 @@ impl<'a> Parser<'a> {
     fn let_decl(&mut self) -> PResult<StmtKind> {
         let is_const = self.bump().kind == T::Keyword(Kw::Const);
         if self.at(T::LBracket) || self.at(T::LBrace) {
-            self.skip_statement()?;
-            return Ok(StmtKind::Unsupported { what: "destructuring" });
+            let pattern = self.pattern()?;
+            let ty = if self.eat(T::Colon) { Some(self.type_expr()?) } else { None };
+            self.expect(T::Eq, "`=` and a value to destructure")?;
+            let init = self.expr()?;
+            return Ok(StmtKind::Destructure { is_const, pattern, ty, init });
         }
         let name = self.ident("a variable name")?;
         let ty = if self.eat(T::Colon) { Some(self.type_expr()?) } else { None };
         let init = if self.eat(T::Eq) { Some(self.expr()?) } else { None };
         Ok(StmtKind::Let { is_const, name, ty, init })
+    }
+
+    /// A name, `_`, or `[a, b = 0, ...rest]`, as a declaration or a loop
+    /// header binds it.
+    fn pattern(&mut self) -> PResult<Pattern> {
+        let t = self.tok(0);
+        match t.kind {
+            T::LBracket => {
+                self.bump();
+                let mut items = Vec::new();
+                let mut rest = None;
+                while !self.at(T::RBracket) {
+                    if self.eat(T::Ellipsis) {
+                        rest = Some(self.ident("a name for the rest")?);
+                        if self.at(T::Comma) {
+                            let c = self.tok(0);
+                            return self.error(c.span, "`...rest` must be the last element of the pattern");
+                        }
+                        break;
+                    }
+                    let pattern = self.pattern()?;
+                    let default = if self.eat(T::Eq) { Some(self.expr()?) } else { None };
+                    items.push(PatItem { pattern, default });
+                    if !self.eat(T::Comma) {
+                        break;
+                    }
+                }
+                let close = self.expect(T::RBracket, "`]` or `,` in the pattern")?;
+                Ok(Pattern::List { items, rest, span: t.span.to(close.span) })
+            }
+            T::LBrace => {
+                let span = self.skip_group()?;
+                Ok(Pattern::Unsupported { what: "destructuring structs", span })
+            }
+            T::Ident if self.text_of(t.span) == "_" => {
+                self.bump();
+                Ok(Pattern::Ignore(t.span))
+            }
+            _ => Ok(Pattern::Name(self.ident("a variable name")?)),
+        }
     }
 
     /// An assignment, increment or expression, without the `;`.
@@ -897,9 +998,28 @@ impl<'a> Parser<'a> {
             k += 1;
         }
         if is_of {
-            self.skip_group()?;
-            self.skip_group()?;
-            return Ok(StmtKind::Unsupported { what: "for...of loops" });
+            self.bump(); // (
+            let binding = if self.eat_kw(Kw::Const) {
+                Binding::Const
+            } else if self.eat_kw(Kw::Let) {
+                Binding::Let
+            } else if self.at_word("mut") && !self.word_at(1, "of") {
+                self.bump();
+                Binding::Mut
+            } else {
+                let t = self.tok(0);
+                return self.error(self.head(t), "a loop variable is declared with `const`, `let` or `mut`, as in `for (const x of xs)`");
+            };
+            let pattern = self.pattern()?;
+            if !self.eat_word("of") {
+                let t = self.tok(0);
+                let found = self.describe(t);
+                return self.error(self.head(t), format!("expected `of`, found {found}"));
+            }
+            let iter = self.expr()?;
+            self.expect(T::RParen, "`)`")?;
+            let body = self.block()?;
+            return Ok(StmtKind::ForOf { binding, pattern, iter, body });
         }
         self.bump(); // (
         let init = if self.at(T::Semi) { None } else { Some(self.simple_stmt_node()?) };
@@ -1084,7 +1204,7 @@ impl<'a> Parser<'a> {
                             let s = self.bump().span;
                             let inner = self.expr()?;
                             let span = s.to(self.espan(inner));
-                            self.alloc_expr(ExprKind::Unsupported { what: "spread arguments" }, span)
+                            self.alloc_expr(ExprKind::Spread(inner), span)
                         } else {
                             self.expr()?
                         };
@@ -1172,6 +1292,18 @@ impl<'a> Parser<'a> {
                 let span = t.span.to(self.skip_group()?).to(self.skip_group()?);
                 return Ok(self.alloc_expr(ExprKind::Unsupported { what: "`match` expressions" }, span));
             }
+            // `x => x * 2`: the parameter list always has parentheses. The
+            // fix is exact, so parsing goes on as if it were applied.
+            T::Ident if self.peek_at(1) == T::Arrow => {
+                let name = self.text_of(t.span).to_string();
+                let d = Diagnostic::error(E_SYNTAX, self.file, t.span, "an arrow function's parameters go in parentheses").with_fix(
+                    format!("write `({name})`"),
+                    Applicability::Safe,
+                    vec![Edit { file: self.file, span: t.span, before: name.clone(), after: format!("({name})") }],
+                );
+                self.diags.push(d);
+                return self.arrow_function();
+            }
             T::Ident => {
                 self.bump();
                 let name = self.text_of(t.span).to_string();
@@ -1182,7 +1314,7 @@ impl<'a> Parser<'a> {
             }
             T::LParen => {
                 if self.is_arrow_function() {
-                    return self.skip_arrow_function();
+                    return self.arrow_function();
                 }
                 self.bump();
                 let inner = self.expr()?;
@@ -1198,7 +1330,7 @@ impl<'a> Parser<'a> {
                         let s = self.bump().span;
                         let inner = self.expr()?;
                         let span = s.to(self.espan(inner));
-                        items.push(self.alloc_expr(ExprKind::Unsupported { what: "spread" }, span));
+                        items.push(self.alloc_expr(ExprKind::Spread(inner), span));
                     } else {
                         items.push(self.expr()?);
                     }
@@ -1210,10 +1342,7 @@ impl<'a> Parser<'a> {
                 let span = t.span.to(close.span);
                 return Ok(self.alloc_expr(ExprKind::List(items), span));
             }
-            T::LBrace => {
-                let span = self.skip_group()?;
-                return Ok(self.alloc_expr(ExprKind::Unsupported { what: "map literals" }, span));
-            }
+            T::LBrace => return self.map_literal(),
             T::Unknown => {
                 let text = self.text_of(t.span);
                 let msg = if text.starts_with('"') || text.starts_with('`') {
@@ -1277,34 +1406,118 @@ impl<'a> Parser<'a> {
         let Some(k) = self.closing(0) else { return false };
         match self.peek_at(k + 1) {
             T::Arrow => true,
-            // `(x: int): int => ...`
+            // `(x: int): int => ...`, and a return type with brackets of its
+            // own, as `: [int, string]` or `: map<string, int>`.
             T::Colon => {
                 let mut j = k + 2;
+                let mut depth = 0i32;
                 loop {
                     match self.peek_at(j) {
-                        T::Arrow => return true,
-                        T::Semi | T::Eof | T::LBrace | T::RBrace | T::RParen | T::Comma => return false,
-                        _ => j += 1,
+                        T::Arrow if depth == 0 => return true,
+                        T::LBracket | T::LParen | T::Lt => depth += 1,
+                        T::RBracket | T::Gt if depth > 0 => depth -= 1,
+                        T::RParen if depth > 0 => depth -= 1,
+                        T::Semi | T::Eof | T::LBrace | T::RBrace | T::RParen | T::RBracket | T::Comma if depth == 0 => return false,
+                        T::Semi | T::Eof | T::LBrace | T::RBrace => return false,
+                        _ => {}
                     }
+                    j += 1;
                 }
             }
             _ => false,
         }
     }
 
-    fn skip_arrow_function(&mut self) -> PResult<ExprId> {
-        let start = self.skip_group()?;
-        while !self.at(T::Arrow) && !self.at(T::Eof) {
-            self.bump();
+    /// `(x: int): int => x * 2`, or with a block body.
+    fn arrow_function(&mut self) -> PResult<ExprId> {
+        if self.at(T::Ident) {
+            // `x => ...`, already reported: one untyped parameter.
+            let t = self.bump();
+            let name = Ident { name: self.text_of(t.span).to_string(), span: t.span };
+            let params = vec![Param { name, is_mut: false, ty: None, default: None, span: t.span }];
+            let arrow = self.expect(T::Arrow, "`=>`")?;
+            let head = t.span.to(arrow.span);
+            let (body, end) = if self.at(T::LBrace) {
+                let b = self.block()?;
+                let span = b.span;
+                (ArrowBody::Block(b), span)
+            } else {
+                let e = self.expr()?;
+                (ArrowBody::Expr(e), self.espan(e))
+            };
+            return Ok(self.alloc_expr(ExprKind::Arrow(Box::new(Arrow { params, ret: None, body, head })), t.span.to(end)));
         }
-        self.expect(T::Arrow, "`=>`")?;
-        let end = if self.at(T::LBrace) {
-            self.skip_group()?
+        let open = self.bump();
+        let mut params = Vec::new();
+        while !self.at(T::RParen) {
+            let start = self.tok(0).span;
+            let is_mut = self.eat_mut();
+            let name = self.ident("a parameter name")?;
+            let ty = if self.eat(T::Colon) { Some(self.type_expr()?) } else { None };
+            let default = if self.eat(T::Eq) { Some(self.expr()?) } else { None };
+            let span = start.to(Span::new(self.prev_end(), self.prev_end()));
+            params.push(Param { name, is_mut, ty, default, span });
+            if !self.eat(T::Comma) {
+                break;
+            }
+        }
+        self.expect(T::RParen, "`)` or `,`")?;
+        let ret = if self.eat(T::Colon) { Some(self.type_postfix()?) } else { None };
+        let arrow = self.expect(T::Arrow, "`=>`")?;
+        let head = open.span.to(arrow.span);
+        // `=> { a: 1 }` is a map: a block can't start with `name:`, `"key":`,
+        // `[key]:` or `...`, since dat has no labels.
+        let map_body = self.at(T::LBrace)
+            && match self.peek_at(1) {
+                T::Ellipsis => true,
+                T::Ident | T::Str | T::Int | T::Keyword(_) => self.peek_at(2) == T::Colon,
+                T::LBracket => self.closing(1).is_some_and(|k| self.peek_at(k + 1) == T::Colon),
+                _ => false,
+            };
+        let (body, end) = if self.at(T::LBrace) && !map_body {
+            let b = self.block()?;
+            let span = b.span;
+            (ArrowBody::Block(b), span)
         } else {
-            let body = self.expr()?;
-            self.espan(body)
+            let e = self.expr()?;
+            (ArrowBody::Expr(e), self.espan(e))
         };
-        Ok(self.alloc_expr(ExprKind::Unsupported { what: "arrow functions" }, start.to(end)))
+        Ok(self.alloc_expr(ExprKind::Arrow(Box::new(Arrow { params, ret, body, head })), open.span.to(end)))
+    }
+
+    /// `{ alice: 30, "b": 1, [key]: value, ...other }`. A name before `:`
+    /// is a string key; any other key is an expression.
+    fn map_literal(&mut self) -> PResult<ExprId> {
+        let open = self.bump();
+        let mut entries = Vec::new();
+        while !self.at(T::RBrace) {
+            if self.at(T::Ellipsis) {
+                self.bump();
+                entries.push(MapEntry::Spread(self.expr()?));
+            } else if self.at(T::LBracket) {
+                self.bump();
+                let key = self.expr()?;
+                self.expect(T::RBracket, "`]`")?;
+                self.expect(T::Colon, "`:` after the key")?;
+                entries.push(MapEntry::Keyed(key, self.expr()?));
+            } else if matches!(self.peek(), T::Ident | T::Keyword(_))
+                && !matches!(self.peek(), T::Keyword(Kw::True | Kw::False | Kw::Null))
+                && self.peek_at(1) == T::Colon
+            {
+                let name = self.member_name()?;
+                self.bump();
+                entries.push(MapEntry::Named(name, self.expr()?));
+            } else {
+                let key = self.expr()?;
+                self.expect(T::Colon, "`:` after the key")?;
+                entries.push(MapEntry::Keyed(key, self.expr()?));
+            }
+            if !self.eat(T::Comma) {
+                break;
+            }
+        }
+        let close = self.expect(T::RBrace, "`}` or `,` in the map")?;
+        Ok(self.alloc_expr(ExprKind::Map(entries), open.span.to(close.span)))
     }
 
     fn template(&mut self) -> PResult<ExprId> {

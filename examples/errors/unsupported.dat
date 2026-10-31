@@ -6,9 +6,8 @@ struct Point {
 }
 
 function main(): void {
-  const xs = [1, 2, 3];
   let id: int | string = 42;
-  for (const x of xs) {
-    print(x);
-  }
+  let email: string? = "ada@example.com";
+  const wide: [int, int, int, int, int, int, int, int, int, int, int, int, int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+  print(id, email);
 }

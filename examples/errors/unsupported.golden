@@ -9,20 +9,20 @@ error[E0002]: not supported yet: struct declarations
 3 | struct Point {
   | ^^^^^^^^^^^^^^
 
-error[E0002]: not supported yet: lists
- --> unsupported.dat:9:14
-9 |   const xs = [1, 2, 3];
-  |              ^^^^^^^^^
-
 error[E0002]: not supported yet: union types
-  --> unsupported.dat:10:11
-10 |   let id: int | string = 42;
-   |           ^^^^^^^^^^^^
+ --> unsupported.dat:9:11
+9 |   let id: int | string = 42;
+  |           ^^^^^^^^^^^^
 
-error[E0002]: not supported yet: for...of loops
-  --> unsupported.dat:11:3
-11 |   for (const x of xs) {
-   |   ^^^^^^^^^^^^^^^^^^^^^
+error[E0002]: not supported yet: nullable types
+  --> unsupported.dat:10:14
+10 |   let email: string? = "ada@example.com";
+   |              ^^^^^^^
+
+error[E0002]: not supported yet: tuples of more than 12 values
+  --> unsupported.dat:11:15
+11 |   const wide: [int, int, int, int, int, int, int, int, int, int, int, int, int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 4 errors
 
 === run
@@ -33,18 +33,18 @@ error[E0002]: not supported yet: struct declarations
 3 | struct Point {
   | ^^^^^^^^^^^^^^
 
-error[E0002]: not supported yet: lists
- --> unsupported.dat:9:14
-9 |   const xs = [1, 2, 3];
-  |              ^^^^^^^^^
-
 error[E0002]: not supported yet: union types
-  --> unsupported.dat:10:11
-10 |   let id: int | string = 42;
-   |           ^^^^^^^^^^^^
+ --> unsupported.dat:9:11
+9 |   let id: int | string = 42;
+  |           ^^^^^^^^^^^^
 
-error[E0002]: not supported yet: for...of loops
-  --> unsupported.dat:11:3
-11 |   for (const x of xs) {
-   |   ^^^^^^^^^^^^^^^^^^^^^
+error[E0002]: not supported yet: nullable types
+  --> unsupported.dat:10:14
+10 |   let email: string? = "ada@example.com";
+   |              ^^^^^^^
+
+error[E0002]: not supported yet: tuples of more than 12 values
+  --> unsupported.dat:11:15
+11 |   const wide: [int, int, int, int, int, int, int, int, int, int, int, int, int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 4 errors

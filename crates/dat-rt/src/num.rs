@@ -6,7 +6,7 @@
 //! code: the ones that can fail take the operation's location and throw.
 
 use crate::fmt::write_float;
-use crate::{DatError, ErrorKind, Loc, Str, throw};
+use crate::{DatError, ErrorKind, List, Loc, Str, throw};
 use std::cmp::Ordering;
 
 type R<T> = Result<T, Box<DatError>>;
@@ -199,6 +199,51 @@ pub fn float_max(a: f64, b: f64) -> f64 {
     } else {
         f64::NAN
     }
+}
+
+// ---- `max(...values)` and `min(...values)` from `@dat/math` ----
+
+#[cold]
+#[inline(never)]
+fn no_values(function: &str) -> Box<DatError> {
+    range_error(format!("{function}() of no values"))
+}
+
+pub fn try_max_int(values: &List<i64>) -> R<i64> {
+    values.iter().copied().max().ok_or_else(|| no_values("max"))
+}
+
+pub fn try_min_int(values: &List<i64>) -> R<i64> {
+    values.iter().copied().min().ok_or_else(|| no_values("min"))
+}
+
+/// As [`float_max`] does for two: a `NaN` anywhere gives `NaN`.
+pub fn try_max_float(values: &List<f64>) -> R<f64> {
+    values.iter().copied().reduce(float_max).ok_or_else(|| no_values("max"))
+}
+
+pub fn try_min_float(values: &List<f64>) -> R<f64> {
+    values.iter().copied().reduce(float_min).ok_or_else(|| no_values("min"))
+}
+
+#[inline(always)]
+pub fn max_int(values: &List<i64>, loc: &'static Loc) -> i64 {
+    or_throw(try_max_int(values), loc)
+}
+
+#[inline(always)]
+pub fn min_int(values: &List<i64>, loc: &'static Loc) -> i64 {
+    or_throw(try_min_int(values), loc)
+}
+
+#[inline(always)]
+pub fn max_float(values: &List<f64>, loc: &'static Loc) -> f64 {
+    or_throw(try_max_float(values), loc)
+}
+
+#[inline(always)]
+pub fn min_float(values: &List<f64>, loc: &'static Loc) -> f64 {
+    or_throw(try_min_float(values), loc)
 }
 
 #[inline(always)]
@@ -438,6 +483,24 @@ mod tests {
         assert!(float_max(f64::NAN, 1.0).is_nan());
         assert!(float_min(0.0, -0.0).is_sign_negative());
         assert!(float_max(-0.0, 0.0).is_sign_positive());
+    }
+
+    #[test]
+    fn max_and_min_of_a_spread_list() {
+        let ints: List<i64> = [3, -7, 5].into_iter().collect();
+        assert_eq!(try_max_int(&ints).unwrap(), 5);
+        assert_eq!(try_min_int(&ints).unwrap(), -7);
+        let floats: List<f64> = [0.0, -0.0, 2.5].into_iter().collect();
+        assert_eq!(try_max_float(&floats).unwrap(), 2.5);
+        assert!(try_min_float(&floats).unwrap().is_sign_negative());
+        let with_nan: List<f64> = [1.0, f64::NAN, 3.0].into_iter().collect();
+        assert!(try_max_float(&with_nan).unwrap().is_nan());
+        assert!(try_min_float(&with_nan).unwrap().is_nan());
+        let e = try_max_int(&List::new()).unwrap_err();
+        assert_eq!((e.kind, e.message.as_str()), (ErrorKind::RangeError, "max() of no values"));
+        assert_eq!(try_min_int(&List::new()).unwrap_err().message, "min() of no values");
+        assert_eq!(try_max_float(&List::new()).unwrap_err().message, "max() of no values");
+        assert_eq!(try_min_float(&List::new()).unwrap_err().message, "min() of no values");
     }
 
     #[test]

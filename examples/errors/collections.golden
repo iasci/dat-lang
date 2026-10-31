@@ -1,0 +1,254 @@
+# Golden results for collections.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0201]: `fixed` is const and can't be modified
+ --> collections.dat:5:3
+5 |   fixed.push(3);
+  |   ^^^^^ declared with `const`
+fix (review): declare it with `let`
+4 |   let fixed = [1, 2];
+
+error[E0201]: `fixed` is const and can't be modified
+ --> collections.dat:6:3
+6 |   fixed[0] = 10;
+  |   ^^^^^ declared with `const`
+fix (review): declare it with `let`
+4 |   let fixed = [1, 2];
+
+error[E0206]: can't infer the element type
+ --> collections.dat:7:15
+7 |   let items = [];
+  |               ^^ nothing says what it will hold
+fix (review): declare its type
+7 |   let items: list<_> = [];
+
+error[E0206]: can't infer the key and value types
+ --> collections.dat:8:16
+8 |   let lookup = {};
+  |                ^^ nothing says what it will hold
+fix (review): declare its type
+8 |   let lookup: map<_, _> = {};
+
+error[E0101]: tuple index must be a constant
+  --> collections.dat:11:15
+11 |   print(entry[i], entry[2]);
+   |               ^ each position has its own type
+option: use position 0
+11 |   print(entry[0], entry[2]);
+option: use position 1
+11 |   print(entry[1], entry[2]);
+
+error[E0101]: a tuple `[string, int]` has positions 0 to 1
+  --> collections.dat:11:25
+11 |   print(entry[i], entry[2]);
+   |                         ^
+
+error[E0151]: a set's elements must be hashable, and `float` isn't
+  --> collections.dat:12:16
+12 |   let bad: set<float> = [];
+   |                ^^^^^ floats aren't hashable, because `NaN != NaN`
+
+error[E0851]: list<int> has no method `length`
+  --> collections.dat:13:15
+13 |   print(fixed.length(), fixed.unique2(), [1, 2].push(3));
+   |               ^^^^^^ `length` is a field, not a method
+fix: read the field
+13 |   print(fixed.length, fixed.unique2(), [1, 2].push(3));
+
+error[E0851]: list<int> has no method `unique2`
+  --> collections.dat:13:31
+13 |   print(fixed.length(), fixed.unique2(), [1, 2].push(3));
+   |                               ^^^^^^^
+fix (review): use `unique`
+13 |   print(fixed.length(), fixed.unique(), [1, 2].push(3));
+
+error[E0350]: `push` changes its list, set or map, and this one isn't stored anywhere
+  --> collections.dat:13:42
+13 |   print(fixed.length(), fixed.unique2(), [1, 2].push(3));
+   |                                          ^^^^^^ call it on a variable, or an element or key of one
+
+error[E0851]: map<string, int> has no field `a`
+  --> collections.dat:15:11
+15 |   print(m.a, m[1], "a" in fixed);
+   |           ^ read a map's values by key
+fix (review): read the key "a"
+15 |   print(m["a"], m[1], "a" in fixed);
+
+error[E0250]: expected a string, found an int
+  --> collections.dat:15:16
+15 |   print(m.a, m[1], "a" in fixed);
+   |                ^ this is an int
+fix: convert it with a template string
+15 |   print(m.a, m[`${1}`], "a" in fixed);
+
+error[E0350]: `in` a list<int> needs an int on its left, not a string
+  --> collections.dat:15:20
+15 |   print(m.a, m[1], "a" in fixed);
+   |                    ^^^^^^^^^^^^
+
+error[E0152]: `includes` needs to compare its elements with `==`, and `(int) => int` can't
+  --> collections.dat:17:9
+17 |   print(fns.includes(fns[0]), [1.5, 2.5].unique(), [[1]].sort());
+   |         ^^^^^^^^^^^^^^^^^^^^ function values can't be compared
+
+error[E0151]: `unique` needs to hash its elements, and `float` can't
+  --> collections.dat:17:31
+17 |   print(fns.includes(fns[0]), [1.5, 2.5].unique(), [[1]].sort());
+   |                               ^^^^^^^^^^^^^^^^^^^ floats aren't hashable, because `NaN != NaN`
+
+error[E0350]: `sort` changes its list, set or map, and this one isn't stored anywhere
+  --> collections.dat:17:52
+17 |   print(fns.includes(fns[0]), [1.5, 2.5].unique(), [[1]].sort());
+   |                                                    ^^^^^ call it on a variable, or an element or key of one
+
+error[E0002]: not supported yet: lists whose elements have different types
+  --> collections.dat:18:16
+18 |   let mixed = [1, "two"];
+   |                ^^^^^^^^
+
+error[E0350]: a set has no index access
+  --> collections.dat:20:9
+20 |   print(tags[0], [...5]);
+   |         ^^^^^^^ check membership with `has`, or loop over it with `for...of`
+
+error[E0350]: can't spread an int
+  --> collections.dat:20:22
+20 |   print(tags[0], [...5]);
+   |                      ^ `...` takes a list, a set or a string
+
+error[E0701]: condition must be bool
+  --> collections.dat:21:7
+21 |   if (fixed.length) {
+   |       ^^^^^^^^^^^^ `fixed.length` is an int
+fix: compare with 0
+21 |   if (fixed.length > 0) {
+20 errors, 3 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0201]: `fixed` is const and can't be modified
+ --> collections.dat:5:3
+5 |   fixed.push(3);
+  |   ^^^^^ declared with `const`
+fix (review): declare it with `let`
+4 |   let fixed = [1, 2];
+
+error[E0201]: `fixed` is const and can't be modified
+ --> collections.dat:6:3
+6 |   fixed[0] = 10;
+  |   ^^^^^ declared with `const`
+fix (review): declare it with `let`
+4 |   let fixed = [1, 2];
+
+error[E0206]: can't infer the element type
+ --> collections.dat:7:15
+7 |   let items = [];
+  |               ^^ nothing says what it will hold
+fix (review): declare its type
+7 |   let items: list<_> = [];
+
+error[E0206]: can't infer the key and value types
+ --> collections.dat:8:16
+8 |   let lookup = {};
+  |                ^^ nothing says what it will hold
+fix (review): declare its type
+8 |   let lookup: map<_, _> = {};
+
+error[E0101]: tuple index must be a constant
+  --> collections.dat:11:15
+11 |   print(entry[i], entry[2]);
+   |               ^ each position has its own type
+option: use position 0
+11 |   print(entry[0], entry[2]);
+option: use position 1
+11 |   print(entry[1], entry[2]);
+
+error[E0101]: a tuple `[string, int]` has positions 0 to 1
+  --> collections.dat:11:25
+11 |   print(entry[i], entry[2]);
+   |                         ^
+
+error[E0151]: a set's elements must be hashable, and `float` isn't
+  --> collections.dat:12:16
+12 |   let bad: set<float> = [];
+   |                ^^^^^ floats aren't hashable, because `NaN != NaN`
+
+error[E0851]: list<int> has no method `length`
+  --> collections.dat:13:15
+13 |   print(fixed.length(), fixed.unique2(), [1, 2].push(3));
+   |               ^^^^^^ `length` is a field, not a method
+fix: read the field
+13 |   print(fixed.length, fixed.unique2(), [1, 2].push(3));
+
+error[E0851]: list<int> has no method `unique2`
+  --> collections.dat:13:31
+13 |   print(fixed.length(), fixed.unique2(), [1, 2].push(3));
+   |                               ^^^^^^^
+fix (review): use `unique`
+13 |   print(fixed.length(), fixed.unique(), [1, 2].push(3));
+
+error[E0350]: `push` changes its list, set or map, and this one isn't stored anywhere
+  --> collections.dat:13:42
+13 |   print(fixed.length(), fixed.unique2(), [1, 2].push(3));
+   |                                          ^^^^^^ call it on a variable, or an element or key of one
+
+error[E0851]: map<string, int> has no field `a`
+  --> collections.dat:15:11
+15 |   print(m.a, m[1], "a" in fixed);
+   |           ^ read a map's values by key
+fix (review): read the key "a"
+15 |   print(m["a"], m[1], "a" in fixed);
+
+error[E0250]: expected a string, found an int
+  --> collections.dat:15:16
+15 |   print(m.a, m[1], "a" in fixed);
+   |                ^ this is an int
+fix: convert it with a template string
+15 |   print(m.a, m[`${1}`], "a" in fixed);
+
+error[E0350]: `in` a list<int> needs an int on its left, not a string
+  --> collections.dat:15:20
+15 |   print(m.a, m[1], "a" in fixed);
+   |                    ^^^^^^^^^^^^
+
+error[E0152]: `includes` needs to compare its elements with `==`, and `(int) => int` can't
+  --> collections.dat:17:9
+17 |   print(fns.includes(fns[0]), [1.5, 2.5].unique(), [[1]].sort());
+   |         ^^^^^^^^^^^^^^^^^^^^ function values can't be compared
+
+error[E0151]: `unique` needs to hash its elements, and `float` can't
+  --> collections.dat:17:31
+17 |   print(fns.includes(fns[0]), [1.5, 2.5].unique(), [[1]].sort());
+   |                               ^^^^^^^^^^^^^^^^^^^ floats aren't hashable, because `NaN != NaN`
+
+error[E0350]: `sort` changes its list, set or map, and this one isn't stored anywhere
+  --> collections.dat:17:52
+17 |   print(fns.includes(fns[0]), [1.5, 2.5].unique(), [[1]].sort());
+   |                                                    ^^^^^ call it on a variable, or an element or key of one
+
+error[E0002]: not supported yet: lists whose elements have different types
+  --> collections.dat:18:16
+18 |   let mixed = [1, "two"];
+   |                ^^^^^^^^
+
+error[E0350]: a set has no index access
+  --> collections.dat:20:9
+20 |   print(tags[0], [...5]);
+   |         ^^^^^^^ check membership with `has`, or loop over it with `for...of`
+
+error[E0350]: can't spread an int
+  --> collections.dat:20:22
+20 |   print(tags[0], [...5]);
+   |                      ^ `...` takes a list, a set or a string
+
+error[E0701]: condition must be bool
+  --> collections.dat:21:7
+21 |   if (fixed.length) {
+   |       ^^^^^^^^^^^^ `fixed.length` is an int
+fix: compare with 0
+21 |   if (fixed.length > 0) {
+20 errors, 3 fixable with dat fix

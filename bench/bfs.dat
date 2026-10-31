@@ -1,0 +1,23 @@
+// Shown by `dat-conformance perf`: a breadth-first search with `shift` on a
+// list used as a queue.
+function main(): void {
+  const n = 1_000_000;
+  let dist: list<int> = [];
+  for (const i of range(n)) {
+    dist.push(-1);
+  }
+  dist[0] = 0;
+  let queue = [0];
+  let reached = 1;
+  while (!queue.isEmpty()) {
+    const v = queue.shift();
+    for (const w of [(v * 2) % n, (v + 1) % n, (v * 3 + 1) % n]) {
+      if (dist[w] == -1) {
+        dist[w] = dist[v] + 1;
+        reached++;
+        queue.push(w);
+      }
+    }
+  }
+  print(reached, dist[n - 1], dist[12345]);
+}

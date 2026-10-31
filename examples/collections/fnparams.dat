@@ -1,0 +1,87 @@
+// Function values passed to functions of ours (§06). A parameter the function
+// only calls or passes on borrows the caller's function in compiled code; one
+// it stores, returns or captures in a stored arrow function is shared. Both
+// behave the same.
+
+function apply(f: (x: int) => int, v: int): int {
+  return f(v);
+}
+
+function applyTwice(f: (x: int) => int, v: int): int {
+  return apply(f, apply(f, v));
+}
+
+// Passed on recursively, and between two functions that call each other.
+function walk(f: (x: int) => int, n: int): int {
+  if (n == 0) {
+    return f(0);
+  }
+  return walk(f, n - 1) + 1;
+}
+
+function ping(f: (x: int) => int, n: int): int {
+  return n == 0 ? f(n) : pong(f, n - 1);
+}
+
+function pong(f: (x: int) => int, n: int): int {
+  return ping(f, n);
+}
+
+// Stored, and captured by an arrow function that's returned: shared.
+function keep(f: (x: int) => int): list<(x: int) => int> {
+  return [f, f];
+}
+
+function twice(f: (x: int) => int): (x: int) => int {
+  return (x: int) => f(f(x));
+}
+
+// Captured by an arrow function passed to a built-in method.
+function mapAll(f: (x: int) => int, xs: list<int>): list<int> {
+  return xs.map((x) => f(x) + 1);
+}
+
+function withMut(mut xs: list<int>, f: (x: int) => int): void {
+  xs.push(f(xs.length));
+}
+
+function withDefault(f: (x: int) => int, n: int = f(100)): int {
+  return f(n);
+}
+
+function double(x: int): int {
+  return x * 2;
+}
+
+function check(x: int): int {
+  if (x > 4) {
+    throw RangeError { message: `too big: ${x}` };
+  }
+  return x;
+}
+
+function main(): void {
+  const k = 10;
+  print(apply((x: int) => x + k, 1), applyTwice((x: int) => x * 3, 2));
+  print(walk((x: int) => x + 100, 5), ping((x: int) => x - 1, 4));
+  const kept = keep((x: int) => x + k);
+  const quad = twice(double);
+  print(kept[1](5), quad(3), kept);
+  print(mapAll((x: int) => x * k, [1, 2, 3]));
+  print(apply(double, 21));
+  const stored = (x: int) => x - k;
+  print(apply(stored, 50), applyTwice(stored, 50), apply(kept[0], 1));
+  print(apply((x: int) => stored(x) * 2, 50), [1, 2].map((x) => stored(x)));
+  const h = apply;
+  print(h((x: int) => x * x, 7));
+  let xs = [1, 2];
+  withMut(mut xs, (x: int) => x * 100);
+  print(xs, withDefault((x: int) => x + 1), withDefault(double, 4));
+  try {
+    print(apply(check, 9));
+  } catch (e: RangeError) {
+    print("caught", e);
+  }
+  // An uncaught error in a function value is traced through `<arrow>`.
+  print(apply((x: int) => check(x * 3), 5));
+}

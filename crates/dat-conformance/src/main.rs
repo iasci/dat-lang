@@ -11,6 +11,8 @@
 //!   generated Rust forbids `unsafe` and uses no `RefCell` or reflection.
 //! - `concurrency`: two compiled runs of one file at once, with the file
 //!   changed in between, each run their own version.
+//! - `oom`: a program that runs out of memory ends the same way in both
+//!   modes (Linux only).
 //! - `perf`: the latency budgets and speed gates. Not part of `all`, since
 //!   it needs a quiet machine. `--shared-runner` relaxes it for CI.
 //!
@@ -35,6 +37,8 @@ pub struct Opts {
     pub interp_only: bool,
     /// `perf` on a shared CI runner: fail only at twice a budget or gate.
     pub shared_runner: bool,
+    /// `spec`: print each block's place and content key, for preludes.
+    pub keys: bool,
 }
 
 fn main() -> ExitCode {
@@ -50,6 +54,7 @@ fn main() -> ExitCode {
         verbose: flag(&mut args, "--verbose"),
         interp_only: flag(&mut args, "--interp-only"),
         shared_runner: flag(&mut args, "--shared-runner"),
+        keys: flag(&mut args, "--keys"),
     };
     let what = args.first().map(String::as_str).unwrap_or("all");
     let ok = match what {
@@ -58,6 +63,7 @@ fn main() -> ExitCode {
         "self-test" => examples::self_test(&opts),
         "structure" => examples::structure(&opts),
         "concurrency" => examples::concurrent_runs(&opts),
+        "oom" => examples::out_of_memory(&opts),
         "perf" => perf::run(&opts),
         "all" => {
             let a = examples::run(&opts);
@@ -65,11 +71,12 @@ fn main() -> ExitCode {
             let c = spec::run(&opts);
             let d = examples::structure(&opts);
             let e = examples::concurrent_runs(&opts);
-            a && b && c && d && e
+            let f = examples::out_of_memory(&opts);
+            a && b && c && d && e && f
         }
         other => {
             eprintln!(
-                "usage: dat-conformance [examples|spec|self-test|structure|concurrency|perf|all] [--bless] [--verbose] [--interp-only] [--shared-runner]\nunknown: {other}"
+                "usage: dat-conformance [examples|spec|self-test|structure|concurrency|oom|perf|all] [--bless] [--verbose] [--interp-only] [--shared-runner]\nunknown: {other}"
             );
             return ExitCode::from(2);
         }

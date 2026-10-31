@@ -113,10 +113,16 @@ pub fn main(tests: &[CompiledTest], sites: &'static [Site], limit: &'static Stac
         crate::exit_with(2);
     }
     let code = crate::run_on_dat_thread(crate::STACK_SIZE, || {
-        let infos: Vec<TestInfo> = selected.iter().map(|t| TestInfo { name: t.name.to_string(), frame: t.frame, loc: t.loc }).collect();
-        let start = std::time::Instant::now();
-        let outcomes: Vec<Outcome> = selected.iter().map(|t| run_one(|| crate::throw::run_entry(t.run))).collect();
-        report(&infos, &outcomes, start.elapsed(), verbose)
+        let window = crate::checks::begin();
+        let code = {
+            let infos: Vec<TestInfo> = selected.iter().map(|t| TestInfo { name: t.name.to_string(), frame: t.frame, loc: t.loc }).collect();
+            let start = std::time::Instant::now();
+            let outcomes: Vec<Outcome> = selected.iter().map(|t| run_one(|| crate::throw::run_entry(t.run))).collect();
+            report(&infos, &outcomes, start.elapsed(), verbose)
+        };
+        let code = crate::checks::end(window, code);
+        crate::copies::finish();
+        code
     });
     crate::exit_with(code)
 }

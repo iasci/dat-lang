@@ -555,6 +555,41 @@ fn crate_with(crates: &Path, text: &str) -> Option<PathBuf> {
     entries.flatten().map(|e| e.path().join("src/main.rs")).find(|p| std::fs::read_to_string(p).is_ok_and(|s| s.contains(text)))
 }
 
+/// Exit criterion 10 of M2: a program that runs out of memory prints the
+/// same message and ends the same way in both modes. It runs under a memory
+/// limit, which only Linux enforces, so it's skipped elsewhere.
+pub fn out_of_memory(opts: &Opts) -> bool {
+    if !cfg!(target_os = "linux") || opts.interp_only {
+        println!("out of memory: skipped (needs Linux and the compiled mode)");
+        return true;
+    }
+    let dir = opts.root.join("target/conformance-tmp/oom");
+    std::fs::create_dir_all(&dir).unwrap();
+    let program = "function main(): void {\n  let xs: list<list<int>> = [];\n  while (true) {\n    xs.push(range(100000));\n  }\n}\n";
+    std::fs::write(dir.join("oom.dat"), program).unwrap();
+    // The compiled program is built without the limit; only running it is limited.
+    let built = dat(&dir, &["build", "oom.dat", "-o", "oom"], &[]);
+    if built.status != 0 {
+        println!("out of memory: FAIL, can't build: {}", built.stderr);
+        return false;
+    }
+    let limited = |cmd: &str| {
+        let out =
+            std::process::Command::new("sh").arg("-c").arg(format!("ulimit -v 2000000; exec {cmd}")).current_dir(&dir).output().unwrap();
+        (out.status.code(), String::from_utf8_lossy(&out.stdout).to_string(), String::from_utf8_lossy(&out.stderr).to_string())
+    };
+    let dat_bin = crate::run::dat_binary();
+    let interp = limited(&format!("{} run oom.dat", dat_bin.display()));
+    let compiled = limited("./oom");
+    let expected = "error: out of memory\n";
+    if interp.2 != expected || interp != compiled {
+        println!("out of memory: FAIL, interpreter {interp:?}, compiled {compiled:?}");
+        return false;
+    }
+    println!("out of memory: ok, both modes print `error: out of memory` and abort");
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

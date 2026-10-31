@@ -8,8 +8,12 @@
 #![forbid(unsafe_code)]
 
 mod dump;
+mod types;
+mod visit;
 
 pub use dump::dump;
+pub use types::{Kind, TypeId, Types};
+pub use visit::{Part, each_child, each_part};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FuncId(pub u32);
@@ -31,6 +35,8 @@ pub struct Program {
     pub functions: Vec<Function>,
     pub tests: Vec<Test>,
     pub main: Option<FuncId>,
+    /// The compound types the program uses.
+    pub types: Types,
 }
 
 impl Program {
@@ -45,6 +51,9 @@ pub struct Function {
     pub name: String,
     /// The first `params` locals are the parameters, in order.
     pub params: u32,
+    /// An arrow function's copies of the variables it uses, in the order a
+    /// closure value stores them. A call puts them in these locals.
+    pub captures: Vec<LocalId>,
     /// The values of the last `defaults.len()` parameters when a call leaves
     /// them out, in order. Each may read the parameters before it.
     pub defaults: Vec<Expr>,
@@ -62,6 +71,9 @@ pub struct Local {
     pub ty: Type,
     /// Assigned after its declaration.
     pub reassigned: bool,
+    /// A `mut` parameter or a `mut` loop variable: it stands for the
+    /// caller's value or the list's element, which its changes change.
+    pub by_ref: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -80,20 +92,8 @@ pub enum Type {
     Void,
     Never,
     Error(ErrorType),
-}
-
-impl Type {
-    pub fn name(self) -> &'static str {
-        match self {
-            Type::Int => "int",
-            Type::Float => "float",
-            Type::Bool => "bool",
-            Type::Str => "string",
-            Type::Void => "void",
-            Type::Never => "never",
-            Type::Error(e) => e.name(),
-        }
-    }
+    /// A list, set, map, tuple or function type, from [`Program::types`].
+    Of(TypeId),
 }
 
 /// The built-in error structs of `reference/12-errors.md`.
@@ -150,7 +150,12 @@ pub type Block = Vec<Stmt>;
 pub enum Stmt {
     /// Declares a local and gives it its first value.
     Let(LocalId, Expr),
-    Set(LocalId, Expr),
+    /// `x = value`. The location is where `s += t` appends in place, for
+    /// `--report-copies`.
+    Set(LocalId, Expr, Loc),
+    /// `xs[i] = v` and `m[k] = v`: the place's index and key operands are
+    /// evaluated first, then the value. A last `Key` step inserts.
+    Store(Place, Expr),
     Expr(Expr),
     If(Expr, Block, Block),
     /// `while (cond) body` and `for (; cond; step) body`. `continue` runs `step`.
@@ -169,6 +174,101 @@ pub enum Stmt {
         body: Block,
         catches: Vec<Catch>,
     },
+    /// `for (const x of xs)`: goes through the collection as it was when
+    /// the loop started. `continue` goes to the next element.
+    ForOf {
+        var: LocalId,
+        iter: Iter,
+        body: Block,
+    },
+    /// `for (mut x of xs)`: `var` stands for each element of the list at
+    /// `list` in turn, which nothing else can reach during the loop.
+    ForMut {
+        var: LocalId,
+        list: Place,
+        body: Block,
+        /// The list, for `--report-copies`: the loop changes it in place.
+        loc: Loc,
+    },
+}
+
+/// What a `for...of` loop goes through.
+#[derive(Clone, Debug)]
+pub enum Iter {
+    /// `range(start, end, step)`, without building a list.
+    Range { start: Expr, end: Expr, step: Expr, loc: Loc },
+    /// A list's elements, a set's, a map's `[key, value]` entries as
+    /// tuples, or a string's characters, by the expression's type.
+    Each(Expr),
+}
+
+/// A variable, or a part of one reached through indexes, keys and tuple
+/// positions: what can be assigned, changed by a method, or passed `mut`.
+#[derive(Clone, Debug)]
+pub struct Place {
+    pub root: LocalId,
+    pub steps: Vec<Step>,
+    /// The type of the value at the place.
+    pub ty: Type,
+}
+
+impl Place {
+    /// Where its first index or key is: where a change through the place
+    /// happens, for `--report-copies`. A place of tuple positions only
+    /// changes nothing that's shared.
+    pub fn loc(&self) -> Option<Loc> {
+        self.steps.iter().find_map(|s| match s {
+            Step::Index(_, l) | Step::Key(_, l) => Some(*l),
+            Step::Pos(_) => None,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Step {
+    /// A list element; out of range throws a `RangeError` at `loc`.
+    Index(Expr, Loc),
+    /// A map value; a missing key throws a `KeyError` at `loc`.
+    Key(Expr, Loc),
+    /// A tuple position.
+    Pos(u32),
+}
+
+impl Step {
+    /// Whether two steps, taken from the same value, reach the same part
+    /// of it: `Some(true)` for one local, literal or position, `Some(false)`
+    /// for different literals or positions, `None` when only the values
+    /// at run time can tell. A literal index below zero throws, so it
+    /// reaches no part at all.
+    pub fn same_part(&self, other: &Step) -> Option<bool> {
+        match (self, other) {
+            (Step::Pos(a), Step::Pos(b)) => Some(a == b),
+            (Step::Index(a, _), Step::Index(b, _)) | (Step::Key(a, _), Step::Key(b, _)) => match (&a.kind, &b.kind) {
+                (ExprKind::Int(x), ExprKind::Int(y)) => Some(x == y),
+                (ExprKind::Str(x), ExprKind::Str(y)) => Some(x == y),
+                (ExprKind::Bool(x), ExprKind::Bool(y)) => Some(x == y),
+                (ExprKind::Local(x) | ExprKind::Move(x), ExprKind::Local(y) | ExprKind::Move(y)) if x == y => Some(true),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
+/// An element of a list or set literal.
+#[derive(Clone, Debug)]
+pub enum Elem {
+    One(Expr),
+    /// `...xs`: the elements of a list or a set, or a string's characters.
+    Spread(Expr),
+}
+
+/// An entry of a map literal.
+#[derive(Clone, Debug)]
+pub enum Entry {
+    Pair(Expr, Expr),
+    /// `...m`: later entries win.
+    Spread(Expr),
 }
 
 #[derive(Clone, Debug)]
@@ -219,7 +319,7 @@ impl Expr {
         }
         let mut all = self.joined_parts();
         match all[0].kind {
-            ExprKind::Local(first) if first == s && all.len() > 1 => Some(all.split_off(1)),
+            ExprKind::Local(first) | ExprKind::Move(first) if first == s && all.len() > 1 => Some(all.split_off(1)),
             _ => None,
         }
     }
@@ -297,8 +397,57 @@ pub enum ExprKind {
     Bool(bool),
     Str(String),
     Local(LocalId),
+    /// The last use of a local, found by the liveness pass (dat-own): its
+    /// value is handed over, not copied, and the local isn't read again
+    /// before it's assigned. Only locals of types that share their memory
+    /// (strings, errors, collections and functions) get it.
+    Move(LocalId),
+    /// A call. An argument for a `mut` parameter is a [`ExprKind::Ref`].
     Call {
         func: FuncId,
+        args: Vec<Expr>,
+        loc: Loc,
+    },
+    /// `mut place` as an argument: the callee changes the caller's value.
+    Ref(Place),
+    /// A named function used as a value.
+    FuncRef(FuncId),
+    /// An arrow function: `func`, with copies of `captures` taken now.
+    Closure {
+        func: FuncId,
+        captures: Vec<LocalId>,
+    },
+    /// A call of a function value.
+    CallValue {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+        loc: Loc,
+    },
+    ListLit(Vec<Elem>),
+    SetLit(Vec<Elem>),
+    MapLit(Vec<Entry>),
+    TupleLit(Vec<Expr>),
+    /// `xs[i]` on a list (a `RangeError` when out of range) or `m[k]` on a
+    /// map (a `KeyError` when missing), thrown at `loc`.
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
+        loc: Loc,
+    },
+    /// A tuple position, `entry[1]`.
+    TupleGet(Box<Expr>, u32),
+    /// A method of a collection, or a function on collections, by its one
+    /// implementation in dat-rt. `args[0]` is the receiver. `loc` is where
+    /// it throws, or where it calls a callback that throws.
+    Method {
+        op: Method,
+        args: Vec<Expr>,
+        loc: Loc,
+    },
+    /// A method that changes its receiver, at `place`.
+    Mutate {
+        op: Method,
+        place: Place,
         args: Vec<Expr>,
         loc: Loc,
     },
@@ -326,9 +475,9 @@ pub enum ExprKind {
         args: Vec<Expr>,
         loc: Loc,
     },
-    /// Compares two operands of type `int`, `float`, `bool` or `string`.
-    /// The types are the same, except that an `int` and a `float` compare
-    /// by their exact values.
+    /// Compares two operands of the same type, except that an `int` and a
+    /// `float` compare by their exact values. `<` and the others take
+    /// `int`, `float` and `string`; `==` and `!=` any equatable type.
     Compare {
         op: CmpOp,
         lhs: Box<Expr>,
@@ -344,7 +493,7 @@ pub enum ExprKind {
     },
     /// Joins string-typed parts.
     Concat(Vec<Expr>),
-    /// `toString()` of an `int`, `float`, `bool`, `string` or error value.
+    /// `toString()` of a value of any type but `void` and `never`.
     ToStr(Box<Expr>),
     NewError {
         kind: ErrorType,
@@ -553,5 +702,172 @@ impl Builtin {
 
     pub fn rt_module(self) -> &'static str {
         if self.sig().0[0] == Type::Str { "text" } else { "num" }
+    }
+}
+
+/// The methods of lists, sets and maps, and the functions on collections,
+/// each implemented once in dat-rt. The checker's method table gives each
+/// its signature.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Method {
+    ListLength,
+    ListIsEmpty,
+    ListIncludes,
+    ListIndexOf,
+    ListLastIndexOf,
+    ListAt,
+    ListSlice,
+    ListConcat,
+    ListJoin,
+    ListMap,
+    ListFilter,
+    ListFlatMap,
+    ListFlat,
+    ListReduce,
+    ListForEach,
+    ListFind,
+    ListFindIndex,
+    ListSome,
+    ListEvery,
+    ListCount,
+    ListEntries,
+    ListToSorted,
+    ListToSortedWith,
+    ListToSortedBy,
+    ListToReversed,
+    ListUnique,
+    ListZip,
+    ListGroupBy,
+    /// `push(a, b)`: each argument, in order.
+    ListPush,
+    /// `push(...xs)`, or a mix: the argument is a list of all of them.
+    ListPushAll,
+    ListPop,
+    /// `unshift(...)`: the argument is a list of everything to add.
+    ListUnshift,
+    ListShift,
+    ListInsert,
+    ListRemoveAt,
+    ListRemove,
+    ListSort,
+    ListSortWith,
+    ListSortBy,
+    ListReverse,
+    ListClear,
+    SetSize,
+    SetIsEmpty,
+    SetHas,
+    SetUnion,
+    SetIntersection,
+    SetDifference,
+    SetSymmetricDifference,
+    SetIsSubsetOf,
+    SetIsSupersetOf,
+    SetIsDisjointFrom,
+    SetAdd,
+    SetDelete,
+    SetClear,
+    MapSize,
+    MapIsEmpty,
+    MapGet,
+    MapHas,
+    MapKeys,
+    MapValues,
+    MapEntries,
+    MapSet,
+    MapDelete,
+    MapClear,
+    StrSplit,
+    /// `[...s]`: a string's characters.
+    StrChars,
+    /// `range(start, end, step)`.
+    Range,
+    /// `max(...xs)` and the others from `@dat/math`, on a spread list.
+    MaxInts,
+    MinInts,
+    MaxFloats,
+    MinFloats,
+    /// Destructuring: the list has at least `args[1]` elements, or a `RangeError`.
+    ListCheckLen,
+    /// `item in xs`, `item in s` and `key in m`: unlike the other methods,
+    /// `args[0]` is the item, which is evaluated first, and `args[1]` the
+    /// collection.
+    InList,
+    InSet,
+    InMap,
+    /// Take-and-restore (dat-own): `m.get(k, fallback)` whose value goes
+    /// back under `k` before anything else reads the map. The value moves
+    /// out, leaving a placeholder that keeps the entry's place.
+    MapTake,
+    /// Take-and-restore of `m[k]` or `xs[i]`: the value at the place moves
+    /// out, leaving a placeholder.
+    Take,
+}
+
+impl Method {
+    /// Changes its receiver, so it needs a place ([`ExprKind::Mutate`]).
+    pub fn mutates(self) -> bool {
+        use Method::*;
+        matches!(
+            self,
+            ListPush
+                | ListPushAll
+                | ListPop
+                | ListUnshift
+                | ListShift
+                | ListInsert
+                | ListRemoveAt
+                | ListRemove
+                | ListSort
+                | ListSortWith
+                | ListSortBy
+                | ListReverse
+                | ListClear
+                | SetAdd
+                | SetDelete
+                | SetClear
+                | MapSet
+                | MapDelete
+                | MapClear
+                | MapTake
+                | Take
+        )
+    }
+
+    /// Throws a `RangeError` of its own.
+    pub fn throws(self) -> bool {
+        use Method::*;
+        matches!(
+            self,
+            ListAt | ListPop | ListShift | ListInsert | ListRemoveAt | Range | MaxInts | MinInts | MaxFloats | MinFloats | ListCheckLen
+        )
+    }
+
+    /// Its first argument after the receiver is a callback.
+    pub fn takes_callback(self) -> bool {
+        use Method::*;
+        matches!(
+            self,
+            ListMap
+                | ListFilter
+                | ListFlatMap
+                | ListReduce
+                | ListForEach
+                | ListFind
+                | ListFindIndex
+                | ListSome
+                | ListEvery
+                | ListCount
+                | ListToSortedWith
+                | ListToSortedBy
+                | ListGroupBy
+                | ListSortWith
+                | ListSortBy
+        )
+    }
+
+    /// The name the IR dump shows.
+    pub fn name(self) -> String {
+        format!("{self:?}")
     }
 }

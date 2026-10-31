@@ -9,7 +9,7 @@
 
 mod json;
 
-pub use json::Json;
+pub use json::{Json, json_string};
 
 use std::fmt::Write as _;
 
@@ -360,7 +360,16 @@ pub fn fixed_line_preview(sources: &SourceMap, file: FileId, fix: &Fix) -> Vec<(
         let end = start + e.after.len() as u32;
         delta += e.after.len() as i64 - e.span.len() as i64;
         if e.after.trim().is_empty() {
-            continue; // a pure deletion shows nothing
+            // Deleting whole lines shows nothing; a deletion inside a line
+            // shows what's left of it.
+            if e.before.contains('\n') || new_file.line_text(new_file.line_col(start).0).trim().is_empty() {
+                continue;
+            }
+            let (l, _) = new_file.line_col(start);
+            if !lines.contains(&l) {
+                lines.push(l);
+            }
+            continue;
         }
         // Skip the line breaks at the edges of an inserted block.
         let lead = e.after.len() - e.after.trim_start().len();

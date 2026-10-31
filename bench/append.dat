@@ -1,0 +1,19 @@
+// Shown by `dat-conformance perf`: building a list through a function that
+// returns it with one more element: each call gets the list itself (§02).
+function append(xs: list<int>, x: int): list<int> {
+  let r = xs;
+  r.push(x);
+  return r;
+}
+
+function main(): void {
+  let items: list<int> = [];
+  for (const i of range(2_000_000)) {
+    items = append(items, i * 2);
+  }
+  let sum = 0;
+  for (const x of items) {
+    sum += x;
+  }
+  print(items.length, sum);
+}

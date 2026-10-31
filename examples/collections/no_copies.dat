@@ -1,0 +1,65 @@
+// Every pattern §02 promises never copies, in both modes: `--report-copies`
+// must say `copies: none`. The `=== ir` section pins the moves and takes
+// that make it so.
+
+function append(xs: list<int>, x: int): list<int> {
+  let r = xs;
+  r.push(x);
+  return r;
+}
+
+function addAll(mut into: list<int>, n: int): void {
+  for (const i of range(0, n)) {
+    into.push(i);
+  }
+}
+
+function main(): void {
+  // `items` is replaced right after, so `append` gets the list itself.
+  let items: list<int> = [];
+  for (const n of range(0, 1000)) {
+    items = append(items, n);
+  }
+
+  // `+=` appends to `text` in place.
+  let text = "";
+  for (const word of ["a", "b", "c", "d"]) {
+    text += word;
+  }
+
+  // Taken out of the map and put back.
+  let byTeam: map<string, list<string>> = {};
+  for (const person of ["Ada", "Lin", "Ola", "Bo"]) {
+    const team = person.length > 2 ? "red" : "blue";
+    let members = byTeam.get(team, []);
+    members.push(person);
+    byTeam[team] = members;
+  }
+
+  // Taken out of a list and put back.
+  let grid: list<list<int>> = [[], []];
+  for (const i of range(0, 100)) {
+    let row = grid[i % 2];
+    row.push(i);
+    grid[i % 2] = row;
+  }
+
+  // Changed through a key, an index, a `mut` parameter and a `mut` loop variable.
+  byTeam["red"].push("Kai");
+  grid[0].push(-1);
+  addAll(mut items, 10);
+  for (mut row of grid) {
+    row.push(0);
+  }
+
+  // A queue: `shift` in a loop.
+  let queue = [1];
+  let seen = 0;
+  while (queue.length > 0 && seen < 100) {
+    const next = queue.shift();
+    seen += 1;
+    queue.push(next + 1);
+  }
+
+  print(items.length, text, byTeam, grid[0].length, grid[1].length, seen);
+}

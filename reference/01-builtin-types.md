@@ -158,6 +158,16 @@ print(`Hello, ${name}! You have ${count + 1} messages.`);
 
 These three capabilities exist as the built-in interfaces `Equatable`, `Hashable` and `Comparable`, for use as generic constraints. See [Generics](./19-generics.md).
 
+A set element, a map key, or what `unique` and `groupBy` hash must be hashable, and what `sort()`, `toSorted()` and `sortBy` order without a comparator must be comparable:
+
+```
+let readings: set<float> = [];       // ❌ E0151: a set's elements must be hashable, and `float` isn't
+
+const sizes = [[3, 1], [2]];
+print(sizes.toSorted());             // ❌ E0152: `toSorted` needs to order its elements, and `list<int>` can't
+print(sizes.toSortedBy((s) => s.length));   // ✅ orders by a comparable key
+```
+
 ## Generic Type Variance
 
 Generic types are invariant: a `list<int>` is not a `list<int | string>`. A conversion would have to change every element, so dat makes it explicit. Spreading into a literal of the target type converts each element:

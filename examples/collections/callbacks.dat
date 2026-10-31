@@ -1,0 +1,39 @@
+// Callbacks that throw leave the list as it was; an inconsistent comparator
+// is no error (§10, §12).
+
+function check(x: int): int {
+  if (x > 4) {
+    throw RangeError { message: `too big: ${x}` };
+  }
+  return x;
+}
+
+function main(): void {
+  let xs = [3, 1, 2];
+  try {
+    xs.sort((a, b) => check(a + 2) - check(b + 2));
+  } catch (e) {
+    print("caught", e, xs);
+  }
+  try {
+    xs.sortBy((x) => check(x * 2));
+  } catch (e) {
+    print("caught", e, xs);
+  }
+  try {
+    print(xs.map((x) => check(x * 2)));
+  } catch (e) {
+    print("caught", e, xs);
+  }
+  let many: list<int> = [];
+  for (const i of range(200)) {
+    many.push((i * 7919) % 101);
+  }
+  let copy = many;
+  many.sort((a, b) => 1);
+  print(many.length, many.toSorted() == copy.toSorted());
+  copy.sort((a, b) => a - b);
+  print(copy.slice(0, 5), copy.slice(195));
+  // An uncaught error in a callback is traced through `<arrow>`.
+  print(xs.map((x) => check(x * 3)));
+}

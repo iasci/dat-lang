@@ -25,6 +25,9 @@ fn dat_command(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Command {
     let mut cmd = Command::new(dat_binary());
     cmd.args(args).current_dir(dir);
     cmd.env_remove("DAT_FAULT");
+    // Every run checks that no value is used after it was moved and that
+    // every value is dropped (`dat-rt/src/checks.rs`).
+    cmd.env("DAT_DEBUG_CHECKS", "1");
     for (k, v) in env {
         cmd.env(k, v);
     }

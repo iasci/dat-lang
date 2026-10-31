@@ -1,0 +1,57 @@
+// Sets (§11) and maps (§16): insertion order, and what `delete` does to it.
+
+function main(): void {
+  let tags: set<string> = ["go", "rust", "python"];
+  tags.add("zig");
+  tags.add("go");
+  print(tags, tags.size, tags.has("rust"), tags.isEmpty());
+  print(tags.delete("python"), tags.delete("python"), tags);
+  tags.add("python");
+  print(tags);
+  const systems: set<string> = ["rust", "zig", "c"];
+  print(tags.intersection(systems), tags.difference(systems), tags.union(systems), tags.symmetricDifference(systems));
+  const small: set<string> = ["go"];
+  print(small.isSubsetOf(tags), tags.isSupersetOf(small), tags.isDisjointFrom(["java"]));
+  print("go" in tags, [...tags], tags == ["zig", "rust", "go", "python"]);
+  const ids: set<int> = [...[3, 1, 3, 2]];
+  print(ids, [ids]);
+
+  let scores = { alice: 10, bob: 20, charlie: 30 };
+  print(scores, scores["alice"], scores.get("nobody", 0), "bob" in scores, scores.has("zed"));
+  scores["bob"] = 25;
+  scores.set("dave", 40);
+  print(scores, scores.size);
+  print(scores.delete("bob"), scores.delete("bob"), scores);
+  scores["bob"] = 5;
+  print(scores.keys(), scores.values(), scores.entries());
+  print(scores == { bob: 5, alice: 10, charlie: 30, dave: 40 }, scores.isEmpty());
+  const names: map<int, string> = { 1: "one", 2: "two" };
+  const key = "x";
+  const merged = { ...{ a: 1, b: 2 }, ...{ b: 3 }, [key]: 9 };
+  print(names, merged, { "content-type": "text/html" });
+  let teams: map<string, list<string>> = { red: ["Ada"] };
+  teams["red"].push("Lin");
+  if ("blue" in teams) {
+    teams["blue"].push("Kai");
+  }
+  print(teams);
+  try {
+    print(scores["nobody"]);
+  } catch (e: KeyError) {
+    print(e);
+  }
+  try {
+    teams["green"].push("Sam");
+  } catch (e) {
+    print(e);
+  }
+  scores.clear();
+  tags.clear();
+  print(scores, tags);
+
+  let counts: map<string, int> = {};
+  for (const word of "the cat and the hat and the bat".split(" ")) {
+    counts[word] = counts.get(word, 0) + 1;
+  }
+  print(counts);
+}

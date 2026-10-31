@@ -1,78 +1,124 @@
-# Spec cases that pass in both modes. The list may only grow:
-# `dat-conformance spec --bless` adds new passes.
-01-builtin-types.md:90#ok
-01-builtin-types.md:114#ok
-01-builtin-types.md:114#E0150@117
-01-builtin-types.md:138#ok
-02-variable-declaration.md:157#ok
-02-variable-declaration.md:157#E0250@159
-02-variable-declaration.md:157#E0252@161
-02-variable-declaration.md:166#ok
-02-variable-declaration.md:166#E0203@167
-02-variable-declaration.md:166#E0204@170
-02-variable-declaration.md:166#E0205@172
-03-operators.md:22#ok
-03-operators.md:35#ok
-03-operators.md:35#E0350@36
-03-operators.md:43#ok
-03-operators.md:43#E0301@45
-03-operators.md:55#ok
-03-operators.md:55#E0302@59
-03-operators.md:68#ok
-03-operators.md:68#E0305@70
-03-operators.md:80#ok
-03-operators.md:80#E0303@85
-03-operators.md:80#E0304@87
-03-operators.md:160#ok
-04-primitive-methods.md:110#ok
-04-primitive-methods.md:133#ok
-06-functions.md:7#ok
-06-functions.md:23#ok
-06-functions.md:23#E0652@26
-06-functions.md:23#E0653@32
-06-functions.md:41#ok
-06-functions.md:41#E0655@44
-06-functions.md:50#E0601@58
-06-functions.md:64#E0654@67
-06-functions.md:93#ok
-06-functions.md:93#E0656@94
-06-functions.md:99#ok
-06-functions.md:99#E0650@104
-06-functions.md:99#E0650@105
-06-functions.md:110#ok
-06-functions.md:216#ok
-06-functions.md:224#ok
-06-functions.md:224#E0661@225
-06-functions.md:230#ok
-06-functions.md:230#E0660@231
-07-control-flow.md:7#ok
-07-control-flow.md:24#ok
-07-control-flow.md:91#ok
-07-control-flow.md:160#ok
-07-control-flow.md:160#E0750@163
-12-errors.md:85#ok
-12-errors.md:85#E1251@92
-12-errors.md:85#E1252@93
-12-errors.md:165#ok
-12-errors.md:178#ok
-12-errors.md:178#E1250@179
-12-errors.md:236#ok
-13-reserved-keywords.md:30#ok
-14-scope.md:5#ok
-14-scope.md:5#E1401@14
-14-scope.md:21#ok
-14-scope.md:34#ok
-14-scope.md:34#E1402@36
-15-interfaces.md:16#ok
-17-imports.md:182#ok
-18-enums-and-unions.md:38#ok
-20-testing.md:27#ok
-20-testing.md:27#E2050@29
-21-command-line.md:68#ok
-21-command-line.md:68#E0001@70
-22-concurrency.md:166#ok
-22-concurrency.md:179#ok
-22-concurrency.md:212#ok
-22-concurrency.md:237#ok
-README.md:19#ok
-README.md:19#E0301@20
+# Spec cases that pass in both modes, by content: the block's file and
+# a hash of its text, then the case. The list may only grow:
+# `dat-conformance spec --bless` adds new passes. The second column says
+# where the case was when it was blessed.
+01-builtin-types.md~147351db#ok 01-builtin-types.md:24#ok
+01-builtin-types.md~4850019b#ok 01-builtin-types.md:37#ok
+01-builtin-types.md~4850019b#E0101@+6 01-builtin-types.md:37#E0101@43
+01-builtin-types.md~da5d88e7#ok 01-builtin-types.md:90#ok
+01-builtin-types.md~52030b6c#ok 01-builtin-types.md:114#ok
+01-builtin-types.md~52030b6c#E0150@+3 01-builtin-types.md:114#E0150@117
+01-builtin-types.md~914fc415#ok 01-builtin-types.md:138#ok
+01-builtin-types.md~9e1ab0d5#ok 01-builtin-types.md:163#ok
+01-builtin-types.md~9e1ab0d5#E0151@+1 01-builtin-types.md:163#E0151@164
+01-builtin-types.md~9e1ab0d5#E0152@+4 01-builtin-types.md:163#E0152@167
+02-variable-declaration.md~25d6b2d3#ok 02-variable-declaration.md:124#ok
+02-variable-declaration.md~25d6b2d3#E0202@+3 02-variable-declaration.md:124#E0202@127
+02-variable-declaration.md~5e6ed97b#ok 02-variable-declaration.md:173#ok
+02-variable-declaration.md~5e6ed97b#E0250@+2 02-variable-declaration.md:173#E0250@175
+02-variable-declaration.md~5e6ed97b#E0252@+4 02-variable-declaration.md:173#E0252@177
+02-variable-declaration.md~19f803e0#ok 02-variable-declaration.md:182#ok
+02-variable-declaration.md~19f803e0#E0203@+1 02-variable-declaration.md:182#E0203@183
+02-variable-declaration.md~19f803e0#E0204@+4 02-variable-declaration.md:182#E0204@186
+02-variable-declaration.md~19f803e0#E0205@+6 02-variable-declaration.md:182#E0205@188
+02-variable-declaration.md~19f803e0#E0206@+8 02-variable-declaration.md:182#E0206@190
+02-variable-declaration.md~287c466a#ok 02-variable-declaration.md:198#ok
+02-variable-declaration.md~aa5f1387#ok 02-variable-declaration.md:249#ok
+03-operators.md~b9b2cfcb#ok 03-operators.md:22#ok
+03-operators.md~60168e73#ok 03-operators.md:35#ok
+03-operators.md~60168e73#E0350@+1 03-operators.md:35#E0350@36
+03-operators.md~fb247a5e#ok 03-operators.md:43#ok
+03-operators.md~fb247a5e#E0301@+2 03-operators.md:43#E0301@45
+03-operators.md~38e7fb1d#ok 03-operators.md:55#ok
+03-operators.md~38e7fb1d#E0302@+4 03-operators.md:55#E0302@59
+03-operators.md~2fe49bf6#ok 03-operators.md:68#ok
+03-operators.md~2fe49bf6#E0305@+2 03-operators.md:68#E0305@70
+03-operators.md~a9d7c5f6#ok 03-operators.md:80#ok
+03-operators.md~a9d7c5f6#E0303@+5 03-operators.md:80#E0303@85
+03-operators.md~a9d7c5f6#E0304@+7 03-operators.md:80#E0304@87
+03-operators.md~60a43c50#ok 03-operators.md:114#ok
+03-operators.md~4f4bfd74#ok 03-operators.md:160#ok
+04-primitive-methods.md~366ac225#ok 04-primitive-methods.md:110#ok
+04-primitive-methods.md~78579d5f#ok 04-primitive-methods.md:121#ok
+04-primitive-methods.md~c67a3cdb#ok 04-primitive-methods.md:133#ok
+06-functions.md~967fd2e9#ok 06-functions.md:7#ok
+06-functions.md~a3863f15#ok 06-functions.md:23#ok
+06-functions.md~a3863f15#E0652@+3 06-functions.md:23#E0652@26
+06-functions.md~a3863f15#E0653@+9 06-functions.md:23#E0653@32
+06-functions.md~9c90edcf#ok 06-functions.md:41#ok
+06-functions.md~9c90edcf#E0655@+3 06-functions.md:41#E0655@44
+06-functions.md~ad626c9f#E0601@+8 06-functions.md:50#E0601@58
+06-functions.md~e2b21069#E0654@+3 06-functions.md:64#E0654@67
+06-functions.md~b9e9c8ff#ok 06-functions.md:93#ok
+06-functions.md~b9e9c8ff#E0656@+1 06-functions.md:93#E0656@94
+06-functions.md~0d919468#ok 06-functions.md:99#ok
+06-functions.md~0d919468#E0651@+1 06-functions.md:99#E0651@100
+06-functions.md~a84749a3#ok 06-functions.md:105#ok
+06-functions.md~a84749a3#E0650@+5 06-functions.md:105#E0650@110
+06-functions.md~a84749a3#E0650@+6 06-functions.md:105#E0650@111
+06-functions.md~a03bd0ab#ok 06-functions.md:116#ok
+06-functions.md~97ebcfcb#ok 06-functions.md:150#ok
+06-functions.md~97ebcfcb#E0658@+16 06-functions.md:150#E0658@166
+06-functions.md~97ebcfcb#E0659@+18 06-functions.md:150#E0659@168
+06-functions.md~97ebcfcb#E0657@+20 06-functions.md:150#E0657@170
+06-functions.md~7a1dad64#ok 06-functions.md:178#ok
+06-functions.md~7a1dad64#E0657@+11 06-functions.md:178#E0657@189
+06-functions.md~057ff30a#ok 06-functions.md:197#ok
+06-functions.md~35f3e7b8#ok 06-functions.md:213#ok
+06-functions.md~df1c4a47#ok 06-functions.md:221#ok
+06-functions.md~df1c4a47#E0602@+1 06-functions.md:221#E0602@222
+06-functions.md~77d23a0a#ok 06-functions.md:252#ok
+06-functions.md~5c9e46cd#ok 06-functions.md:267#ok
+06-functions.md~182344ec#ok 06-functions.md:275#ok
+06-functions.md~182344ec#E0661@+1 06-functions.md:275#E0661@276
+06-functions.md~dd643b84#ok 06-functions.md:281#ok
+06-functions.md~dd643b84#E0660@+1 06-functions.md:281#E0660@282
+07-control-flow.md~968b487b#ok 07-control-flow.md:7#ok
+07-control-flow.md~968b487b#E0701@+11 07-control-flow.md:7#E0701@18
+07-control-flow.md~0f99a851#ok 07-control-flow.md:24#ok
+07-control-flow.md~958e9088#ok 07-control-flow.md:34#ok
+07-control-flow.md~73785c49#ok 07-control-flow.md:91#ok
+07-control-flow.md~5cde79db#ok 07-control-flow.md:107#ok
+07-control-flow.md~61c2d79b#ok 07-control-flow.md:118#ok
+07-control-flow.md~31226faf#ok 07-control-flow.md:151#ok
+07-control-flow.md~2b58ac84#ok 07-control-flow.md:160#ok
+07-control-flow.md~2b58ac84#E0750@+3 07-control-flow.md:160#E0750@163
+09-builtin-functions.md~14af7b88#ok 09-builtin-functions.md:27#ok
+09-builtin-functions.md~b53a1e3e#ok 09-builtin-functions.md:40#ok
+10-list-methods.md~98712438#ok 10-list-methods.md:7#ok
+11-set-methods.md~bd733821#ok 11-set-methods.md:9#ok
+11-set-methods.md~c6a4e42d#ok 11-set-methods.md:53#ok
+11-set-methods.md~35fe8388#ok 11-set-methods.md:61#ok
+12-errors.md~943255e6#ok 12-errors.md:85#ok
+12-errors.md~943255e6#E1251@+7 12-errors.md:85#E1251@92
+12-errors.md~943255e6#E1252@+8 12-errors.md:85#E1252@93
+12-errors.md~086fabfe#ok 12-errors.md:165#ok
+12-errors.md~aed8a4f4#ok 12-errors.md:178#ok
+12-errors.md~aed8a4f4#E1250@+1 12-errors.md:178#E1250@179
+12-errors.md~3e7f45a3#ok 12-errors.md:236#ok
+13-reserved-keywords.md~5ff49edf#ok 13-reserved-keywords.md:30#ok
+14-scope.md~be478870#ok 14-scope.md:5#ok
+14-scope.md~be478870#E1401@+9 14-scope.md:5#E1401@14
+14-scope.md~734610a5#ok 14-scope.md:21#ok
+14-scope.md~181fdea3#ok 14-scope.md:34#ok
+14-scope.md~181fdea3#E1402@+2 14-scope.md:34#E1402@36
+15-interfaces.md~8213c4a6#ok 15-interfaces.md:16#ok
+16-map-methods.md~cdf569f4#ok 16-map-methods.md:7#ok
+16-map-methods.md~46c76dbb#ok 16-map-methods.md:25#ok
+16-map-methods.md~e7f0952d#ok 16-map-methods.md:45#ok
+16-map-methods.md~4ed37277#ok 16-map-methods.md:84#ok
+16-map-methods.md~8ab7510b#ok 16-map-methods.md:94#ok
+16-map-methods.md~bf30b887#ok 16-map-methods.md:116#ok
+17-imports.md~2c839c50#ok 17-imports.md:57#ok
+17-imports.md~867e5bac#ok 17-imports.md:182#ok
+18-enums-and-unions.md~46a156af#ok 18-enums-and-unions.md:38#ok
+20-testing.md~3e3a7a85#ok 20-testing.md:27#ok
+20-testing.md~3e3a7a85#E2050@+2 20-testing.md:27#E2050@29
+21-command-line.md~2090bdeb#ok 21-command-line.md:69#ok
+21-command-line.md~2090bdeb#E0001@+2 21-command-line.md:69#E0001@71
+22-concurrency.md~3cd19f01#ok 22-concurrency.md:166#ok
+22-concurrency.md~e876ef98#ok 22-concurrency.md:179#ok
+22-concurrency.md~90c52f9c#ok 22-concurrency.md:212#ok
+22-concurrency.md~e2e9bdca#ok 22-concurrency.md:237#ok
+README.md~bcc367d6#ok README.md:19#ok
+README.md~bcc367d6#E0301@+1 README.md:19#E0301@20

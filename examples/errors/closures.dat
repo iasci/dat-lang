@@ -1,0 +1,18 @@
+// Mistakes with arrow functions and closures.
+
+function apply(x: int, f: (n: int) => int): int {
+  return f(x);
+}
+
+function main(): void {
+  const fn = (x) => x * 2;
+  let total = 0;
+  const items = [1, 2, 3];
+  items.forEach((item) => {
+    total += item;
+  });
+  const g = (x: int) => total + x;
+  print(apply(1, (a, b) => a), apply(1, (s: string) => 1), apply("x", (n) => n));
+  const h = (x: int) => x;
+  print(h(1, 2), h("one"), h == h, items(0));
+}

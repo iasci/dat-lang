@@ -87,7 +87,7 @@ Strings are UTF-8. Lengths and positions count **bytes**, which is the same as c
 | `toLowerCase()` | `() => string` | Convert to lowercase |
 | `replace(from, to)` | `(from: string, to: string) => string` | Replace the **first** occurrence of `from` |
 | `replaceAll(from, to)` | `(from: string, to: string) => string` | Replace every occurrence of `from` |
-| `repeat(count)` | `(count: int) => string` | The string repeated `count` times. Throws a `RangeError` if `count` is negative or the result is too long to hold. |
+| `repeat(count)` | `(count: int) => string` | The string repeated `count` times. Throws a `RangeError` if `count` is negative or the result would be longer than 2^48 bytes, the longest string. |
 | `padStart(length, fill?)` | `(length: int, fill: string = " ") => string` | Pad at the start up to `length` bytes, with `fill` repeated. A character of `fill` that would go past `length` is left out, so the result can be shorter. |
 | `padEnd(length, fill?)` | `(length: int, fill: string = " ") => string` | Pad at the end, as `padStart` does at the start |
 | `toInt()` | `() => int throws ValueError` | Parse as an integer |

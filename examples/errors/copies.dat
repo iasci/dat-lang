@@ -1,0 +1,21 @@
+// E0202: changing a copy that is never used afterwards.
+
+function main(): void {
+  let grid = [[1], [2]];
+  let row = grid[0];
+  row.push(5);
+  let copy = grid;
+  copy[1].push(3);
+  copy.push([9]);
+  let used = grid[1];
+  used.push(1);
+  print(used);
+  for (let r of grid) {
+    r.push(0);
+  }
+  const fixed = [[1]];
+  for (let r of fixed) {
+    r.push(0);
+  }
+  print(grid);
+}

@@ -5,12 +5,13 @@ interpreter for development and Rust code generation for production. The
 language is defined in [`reference/`](reference/README.md); the plan and the
 research behind it are in [`reports/`](reports/).
 
-This tree holds **M1, the core language**: everything that works on single
-values, `int`, `float`, `string` and `bool`, with the functions, control flow,
-built-ins and tests around them, in both run modes. It grew from the M0
-walking skeleton, a real, tiny version of every component.
-[`reports/M1 status.md`](<reports/M1 status.md>) checks it against M1's 13 exit
-criteria, and [`reports/M0 status.md`](<reports/M0 status.md>) has M0's.
+This tree holds **M2, values and collections**: lists, sets, maps and tuples
+that copy on write, `mut` at the call site, arrow functions and closures,
+`for...of`, destructuring and spread, on top of M1's core language of single
+values. It grew from the M0 walking skeleton, a real, tiny version of every
+component. [`reports/M2 status.md`](<reports/M2 status.md>) checks it against
+M2's 15 exit criteria; [`reports/M1 status.md`](<reports/M1 status.md>) and
+[`reports/M0 status.md`](<reports/M0 status.md>) have the earlier ones.
 
 ## Using it
 
@@ -31,30 +32,34 @@ which takes about 10 seconds; later runs reuse them.
 their exit statuses. Two commands exist for looking inside: `dat ir <file>`
 prints the typed IR, and `dat rust <file>` prints the generated Rust.
 
-M1 implements `int`, `float`, `bool` and `string` with their methods,
-functions with default values, `let`/`const`, `if`, `for`, `while`,
-`break`/`continue`, `throw`, `try`/`catch` with the built-in error types,
-`print`, `assert`, `fail`, template strings, `test` blocks, and the
-`@dat/math` module, imported by name or with `import * as`. Anything else
-is reported as `E0002: not supported yet`.
+M2 implements `int`, `float`, `bool` and `string` with their methods,
+`list`, `set`, `map` and tuples with the methods of §10, §11 and §16,
+functions with default values and `mut` parameters, arrow functions,
+closures and function types, `let`/`const`, `if`, `for`, `for...of`,
+`while`, `break`/`continue`, destructuring and spread, `throw`,
+`try`/`catch` with the built-in error types, `print`, `assert`, `fail`,
+`range`, template strings, `test` blocks, and the `@dat/math` module,
+imported by name or with `import * as`. Anything else is reported as
+`E0002: not supported yet`.
 
 ## How it fits together
 
 ```
-src.dat -> dat-syntax -> dat-check -> dat-ir -+-> dat-interp ----------> dat-rt
-           lexer,        names,       typed   |   IR to closures         runtime
-           parser,       types,       IR      +-> dat-codegen -> rustc -> dat-rt
-           arena AST     lowering                  emits Rust
+src.dat -> dat-syntax -> dat-check -> dat-own -> dat-ir -+-> dat-interp ----------> dat-rt
+           lexer,        names,       last      typed   |   IR to closures         runtime
+           parser,       types,       uses      IR      +-> dat-codegen -> rustc -> dat-rt
+           arena AST     lowering     move               emits Rust
            (dat-diag: the diagnostic record, its terminal and JSON forms)
 ```
 
 | Crate | Role |
 | --- | --- |
 | `dat-diag` | The diagnostic record of `reference/21-command-line.md`: code, byte span, message, label, `fixes[]` with applicability and `before` text; the terminal and `--json` renderers; applying fixes. |
-| `dat-syntax` | A lossless lexer (comments kept as trivia), a recursive-descent parser with Pratt expressions, and an arena AST with a byte span on every node. After a syntax error it resumes at the next statement. It parses more than M1 checks, so later constructs get "not supported yet" instead of syntax errors. |
+| `dat-syntax` | A lossless lexer (comments kept as trivia), a recursive-descent parser with Pratt expressions, and an arena AST with a byte span on every node. After a syntax error it resumes at the next statement. It parses more than the current milestone checks, so later constructs get "not supported yet" instead of syntax errors. |
 | `dat-check` | Name resolution, block scope, types and lowering to the IR in one pass per body; one diagnostic per root cause, each with a fix where one is certain. The standard library's interfaces are built in (`stdlib.rs`). [`CODES.md`](crates/dat-check/CODES.md) lists the codes. |
-| `dat-ir` | The typed IR both backends read: slot-indexed locals, checked integer operations with locations, structured control flow and try/catch regions. Evaluation order is the tree order. |
-| `dat-rt` | Every observable operation, once: checked arithmetic and its messages, the methods of numbers (`num`) and strings (`text`), float printing, error values, `print`, `toString`, `assert` rendering, the uncaught-error printer, the test reporter and the stack guard. |
+| `dat-ir` | The typed IR both backends read: slot-indexed locals, checked integer operations with locations, places, structured control flow and try/catch regions, and the table of compound types. Evaluation order is the tree order. |
+| `dat-own` | The liveness pass: marks each variable's last use as a move, and turns §02's take-and-restore into takes, so both modes hand values over instead of copying them. |
+| `dat-rt` | Every observable operation, once: checked arithmetic and its messages, the methods of numbers (`num`) and strings (`text`), lists, ordered sets and maps and their methods, function values, the value traits for `==`, hashing, ordering and printing, error values, `print`, `toString`, `assert` rendering, the uncaught-error printer, the test reporter, the stack guard and the out-of-memory report. |
 | `dat-interp` | Compiles each function's IR to closures once, then runs them, calling dat-rt. Errors propagate as `Result`. |
 | `dat-codegen` | Emits one Rust function per dat function and builds it with Cargo against dat-rt, with the toolchain pinned. Runtime errors unwind. |
 | `dat` | The command line. |

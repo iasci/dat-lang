@@ -16,5 +16,6 @@ dat-syntax.workspace = true
 dat-ir.workspace = true
 dat-check.workspace = true
 dat-rt.workspace = true
+dat-own.workspace = true
 dat-interp.workspace = true
 dat-codegen.workspace = true

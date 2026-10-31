@@ -1,0 +1,24 @@
+# Golden results for mut.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 0
+--- stdout
+["admin", "ops"]
+[1, 7]
+[[1], [2, 7]]
+[[], [2, 7]]
+{"a": 2, "b": 1}
+RangeError: stop [1, 99]
+[3, 2, 1]
+[[], ["c", "a", "b"]]
+{"todo": [], "done": ["z", "x", "y"]}
+[[1, 3], [4, 2]]
+[6, 5]
+RangeError: halfway [103, 102, 1]
+RangeError: index 5 out of range for length 3 [103, 102, 1]
+[10, 20, 30]
+[[1, 0], [2, 3, 0]]

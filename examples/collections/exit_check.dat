@@ -1,0 +1,15 @@
+// M2's exit check, from the roadmap: assignment copies, `mut` shares.
+
+function addOne(mut xs: list<int>): void {
+  xs.push(1);
+}
+
+test "assignment copies, mut shares" {
+  let a = [1, 2, 3];
+  let b = a;
+  b.push(4);
+  assert(a == [1, 2, 3]);
+  assert(b == [1, 2, 3, 4]);
+  addOne(mut a);
+  assert(a == [1, 2, 3, 1]);
+}

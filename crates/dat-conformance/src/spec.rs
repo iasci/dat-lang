@@ -28,6 +28,21 @@ struct Block {
     lines: Vec<String>,
 }
 
+impl Block {
+    /// The block by content: its file and a hash of its text, as
+    /// `02-variable-declaration.md~1a2b3c4d`.
+    fn key(&self) -> String {
+        let mut h: u32 = 0x811c_9dc5;
+        for l in &self.lines {
+            for b in l.bytes().chain(*b"\n") {
+                h ^= b as u32;
+                h = h.wrapping_mul(0x0100_0193);
+            }
+        }
+        format!("{}~{h:08x}", self.file)
+    }
+}
+
 fn extract(root: &Path) -> Vec<Block> {
     let dir = root.join("reference");
     let mut files: Vec<_> =
@@ -280,6 +295,8 @@ fn build_case(lines: &[String], drop: &[bool], keep_comments: bool, prelude: &[S
     let mut nest = 0;
     let mut in_item = false;
     let mut counter = 0;
+    // The depths at which the loops around the current line start.
+    let mut loops: Vec<i32> = Vec::new();
     for (i, raw) in lines.iter().enumerate() {
         if drop[i] {
             continue;
@@ -309,11 +326,23 @@ fn build_case(lines: &[String], drop: &[bool], keep_comments: bool, prelude: &[S
         depth += d;
         let bd = bracket_delta(code);
         nest += bd;
+        if trimmed.starts_with("for ") || trimmed.starts_with("for(") || trimmed.starts_with("while ") {
+            loops.push(depth - d);
+        }
+        while loops.last().is_some_and(|&l| depth <= l) {
+            loops.pop();
+        }
         if trimmed.contains("print(") {
             has_print = true;
             match comment {
+                // `throws` is checked below, and prints nothing.
+                Some(c) if c.starts_with("throws ") => {}
+                // A loop's `print` runs several times; its comment describes them all.
+                _ if !loops.is_empty() => prints_all_stated = false,
                 Some(c) if !c.starts_with("prints") && !c.contains(" then ") && !c.starts_with('❌') && !c.starts_with('✅') => {
-                    stdout.push_str(c);
+                    // `false: already removed`: a value, then why.
+                    let value = c.split_once(": ").filter(|(v, _)| is_literal(v)).map_or(c, |(v, _)| v);
+                    stdout.push_str(value);
                     stdout.push('\n');
                 }
                 _ => prints_all_stated = false,
@@ -390,7 +419,12 @@ fn build_case(lines: &[String], drop: &[bool], keep_comments: bool, prelude: &[S
 }
 
 struct Case {
+    /// The case by content: the block's key, then `#ok`, or the code and
+    /// the line within the block, as `#E0201@+3`. An edit elsewhere in
+    /// the spec leaves it alone.
     id: String,
+    /// Where it is now, for people: the file and line, as `#E0201@14`.
+    at: String,
     status: Status,
 }
 
@@ -526,13 +560,14 @@ fn check_error_case(block: &Block, e: &Expected, src: &CaseSource) -> Status {
     Status::Pass
 }
 
-fn block_cases(opts: &Opts, block: &Block, prelude: &[String]) -> Vec<Case> {
+fn block_cases(opts: &Opts, block: &Block, key: &str, prelude: &[String]) -> Vec<Case> {
     let base = format!("{}:{}", block.file, block.line);
     if let Some(reason) = doc_only_reason(block) {
-        return vec![Case { id: base, status: Status::DocOnly(reason.into()) }];
+        return vec![Case { id: key.to_string(), at: base, status: Status::DocOnly(reason.into()) }];
     }
     if block.lines.first().is_some_and(|l| l.trim_start().starts_with("// ") && l.trim_end().ends_with(".dat") || l.contains(".dat:")) {
-        return vec![Case { id: base, status: Status::Unsupported("not supported yet: multi-file examples, which need imports".into()) }];
+        let status = Status::Unsupported("not supported yet: multi-file examples, which need imports".into());
+        return vec![Case { id: key.to_string(), at: base, status }];
     }
     let exps = expectations(&block.lines);
     let mut cases = Vec::new();
@@ -563,7 +598,7 @@ fn block_cases(opts: &Opts, block: &Block, prelude: &[String]) -> Vec<Case> {
     } else {
         Status::Pass
     };
-    cases.push(Case { id: format!("{base}#ok"), status });
+    cases.push(Case { id: format!("{key}#ok"), at: format!("{base}#ok"), status });
     for e in &exps {
         let mut drop = vec![false; block.lines.len()];
         for other in exps.iter().filter(|o| o.line != e.line) {
@@ -574,11 +609,28 @@ fn block_cases(opts: &Opts, block: &Block, prelude: &[String]) -> Vec<Case> {
         for k in 1..=e.extra_lines {
             drop[e.line + k] = true;
         }
+        // A `✅` line that declares the ❌ line's name again is the
+        // correct alternative to it, not a second declaration.
+        if let Some(name) = declared_name(&block.lines[e.line]) {
+            for (i, l) in block.lines.iter().enumerate() {
+                if i != e.line && split_comment(l).1.is_some_and(|c| c.starts_with('✅')) && declared_name(l) == Some(name) {
+                    drop[i] = true;
+                }
+            }
+        }
         let src = build_case(&block.lines, &drop, false, prelude);
         let status = check_error_case(block, e, &src);
-        cases.push(Case { id: format!("{base}#{}@{}", e.code, block.line + 1 + e.line), status });
+        let (id, at) = (format!("{key}#{}@+{}", e.code, e.line + 1), format!("{base}#{}@{}", e.code, block.line + 1 + e.line));
+        cases.push(Case { id, at, status });
     }
     cases
+}
+
+/// The name a `const` or `let` line declares.
+fn declared_name(line: &str) -> Option<&str> {
+    let rest = line.trim_start().strip_prefix("const ").or_else(|| line.trim_start().strip_prefix("let "))?;
+    let end = rest.find(|c: char| !c.is_alphanumeric() && c != '_').unwrap_or(rest.len());
+    Some(&rest[..end]).filter(|n| !n.is_empty())
 }
 
 /// `conformance/preludes.txt`: `<block id> <statement>` lines. Each block's
@@ -618,13 +670,28 @@ pub fn run(opts: &Opts) -> bool {
     let mut cases = Vec::new();
     let mut panics = 0;
     std::panic::set_hook(Box::new(|_| {}));
+    let mut seen: BTreeMap<String, usize> = BTreeMap::new();
     for b in &blocks {
-        let id = format!("{}:{}", b.file, b.line);
+        let at = format!("{}:{}", b.file, b.line);
+        // Two blocks with the same text in one file get `.2`, `.3`, ...
+        let mut key = b.key();
+        let n = seen.entry(key.clone()).or_default();
+        *n += 1;
+        if *n > 1 {
+            key = format!("{key}.{n}");
+        }
+        if opts.keys {
+            println!("{at} {key}");
+            continue;
+        }
         if let Err(msg) = never_panics(&b.lines.join("\n")) {
-            println!("FAIL  {id}: the compiler panicked: {msg}");
+            println!("FAIL  {at}: the compiler panicked: {msg}");
             panics += 1;
         }
-        cases.extend(block_cases(opts, b, preludes.get(&id).map_or(&[], Vec::as_slice)));
+        cases.extend(block_cases(opts, b, &key, preludes.get(&key).map_or(&[], Vec::as_slice)));
+    }
+    if opts.keys {
+        return true;
     }
     for c in &mut cases {
         if let Some(why) = xfail.get(&c.id) {
@@ -647,19 +714,23 @@ pub fn run(opts: &Opts) -> bool {
             Status::Pass => String::new(),
             Status::Fail(s) | Status::Unsupported(s) | Status::DocOnly(s) | Status::XFail(s) => format!("  {s}"),
         };
-        let _ = writeln!(report, "{:<11} {}{detail}", c.status.label(), c.id);
+        let _ = writeln!(report, "{:<11} {}{detail}", c.status.label(), c.at);
         if matches!(c.status, Status::Fail(_)) {
             ok = false;
         }
     }
-    let passing: Vec<&str> = cases.iter().filter(|c| c.status == Status::Pass).map(|c| c.id.as_str()).collect();
-    for id in ratchet.keys() {
-        if !passing.contains(&id.as_str()) {
-            let _ = writeln!(report, "REGRESSION  {id} was passing (conformance/spec-pass.txt)");
+    let passing: Vec<&Case> = cases.iter().filter(|c| c.status == Status::Pass).collect();
+    let mut regressed = false;
+    for (id, at) in &ratchet {
+        if !passing.iter().any(|c| c.id == *id) {
+            let now =
+                cases.iter().find(|c| c.id == *id).map_or("its block changed or is gone".to_string(), |c| c.status.label().to_string());
+            let _ = writeln!(report, "REGRESSION  {id} ({at}) was passing (conformance/spec-pass.txt): {now}");
             ok = false;
+            regressed = true;
         }
     }
-    let new: Vec<&&str> = passing.iter().filter(|id| !ratchet.contains_key(**id)).collect();
+    let new: Vec<&&Case> = passing.iter().filter(|c| !ratchet.contains_key(&c.id)).collect();
     if opts.verbose || !ok {
         print!("{report}");
     } else {
@@ -674,13 +745,14 @@ pub fn run(opts: &Opts) -> bool {
         cases.len(),
         counts.iter().map(|(k, v)| format!("{v} {k}")).collect::<Vec<_>>().join(", ")
     );
-    if opts.bless {
+    if opts.bless && regressed {
+        println!("spec: not blessing while a case regresses; fix it, or remove its line from the ratchet by hand if its block changed");
+    } else if opts.bless {
         let mut text = String::from(
-            "# Spec cases that pass in both modes. The list may only grow:\n# `dat-conformance spec --bless` adds new passes.\n",
+            "# Spec cases that pass in both modes, by content: the block's file and\n# a hash of its text, then the case. The list may only grow:\n# `dat-conformance spec --bless` adds new passes. The second column says\n# where the case was when it was blessed.\n",
         );
-        for id in &passing {
-            text.push_str(id);
-            text.push('\n');
+        for c in &passing {
+            let _ = writeln!(text, "{} {}", c.id, c.at);
         }
         std::fs::write(&ratchet_path, text).unwrap();
         println!("spec: wrote {} passing cases to {}", passing.len(), ratchet_path.display());

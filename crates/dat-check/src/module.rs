@@ -10,6 +10,11 @@ use dat_ir as ir;
 use dat_syntax::ast::{self, Ast, ItemKind};
 use std::collections::HashMap;
 
+/// The most values a tuple and the most parameters a function value can
+/// have: dat-rt implements its value traits and function values up to
+/// this many, as std does for tuples.
+pub(crate) const MAX_ARITY: usize = 12;
+
 pub(crate) enum Ret {
     Known(Ty),
     /// Not declared; inferred from the body when first needed.
@@ -20,13 +25,24 @@ pub(crate) enum Ret {
 
 pub(crate) struct Sig {
     pub name: String,
-    pub params: Vec<(String, Ty)>,
+    /// Each parameter's name and type, and whether it's `mut`.
+    pub params: Vec<(String, Ty, bool)>,
     /// How many of the last parameters have default values.
     pub defaults: usize,
     pub ret: Ret,
     /// The function or test declaration, by item index.
     pub item: usize,
     pub is_test: bool,
+}
+
+impl Sig {
+    /// The return type, once it's known.
+    pub fn ret_known(&self) -> Option<Ty> {
+        match self.ret {
+            Ret::Known(t) => Some(t),
+            Ret::Infer | Ret::InProgress => None,
+        }
+    }
 }
 
 pub(crate) struct Module<'a> {
@@ -51,6 +67,10 @@ pub(crate) struct Module<'a> {
     /// Each E1401 whose fix imports a name: the diagnostic's index, the
     /// module and the name.
     pub import_fixes: Vec<(usize, &'static stdlib::StdModule, String)>,
+    pub types: ir::Types,
+    /// Arrow functions, lowered to functions of their own: their ids
+    /// follow the declared functions and tests.
+    pub arrows: Vec<ir::Function>,
 }
 
 /// What an imported name refers to.
@@ -80,6 +100,8 @@ pub fn check(sources: &SourceMap, ast: &Ast, opts: Options, diags: &mut Vec<Diag
         named_imports: Vec::new(),
         import_at: 0,
         import_fixes: Vec::new(),
+        types: ir::Types::default(),
+        arrows: Vec::new(),
     };
     m.collect();
     for id in 0..m.sigs.len() {
@@ -128,6 +150,25 @@ impl<'a> Module<'a> {
         ir::Loc { line, col }
     }
 
+    /// A type as messages write it: `int`, `list<string>`.
+    pub fn tn(&self, t: Ty) -> String {
+        match t {
+            Ty::Poison => "{unknown}".to_string(),
+            t => self.types.name(t.ir()),
+        }
+    }
+
+    /// The type with its article, for messages: "an int", "a list<string>".
+    pub fn an(&self, t: Ty) -> String {
+        let name = self.tn(t);
+        match self.types.kind(t.ir()) {
+            Some(ir::Kind::Tuple(_)) => format!("a tuple `{name}`"),
+            Some(ir::Kind::Func(..)) => format!("a function `{name}`"),
+            _ if name.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) => format!("an {name}"),
+            _ => format!("a {name}"),
+        }
+    }
+
     pub fn error(&mut self, code: &'static str, span: Span, message: impl Into<String>) -> &mut Diagnostic {
         self.diags.push(Diagnostic::error(code, self.file, span, message));
         self.diags.last_mut().unwrap()
@@ -165,7 +206,8 @@ impl<'a> Module<'a> {
                                 Some(t) => match self.resolve_type(t) {
                                     t @ (Ty::Void | Ty::Never) => {
                                         let span = p.ty.as_ref().unwrap().span;
-                                        self.error(codes::VOID_VALUE, span, format!("a parameter can't have type {}", t.name())).label =
+                                        let name = self.tn(t);
+                                        self.error(codes::VOID_VALUE, span, format!("a parameter can't have type {name}")).label =
                                             Some("no value has this type, so the function could never be called".into());
                                         Ty::Poison
                                     }
@@ -177,7 +219,7 @@ impl<'a> Module<'a> {
                                     Ty::Poison
                                 }
                             };
-                            (p.name.name.clone(), ty)
+                            (p.name.name.clone(), ty, p.is_mut)
                         })
                         .collect();
                     let ret = match &f.ret {
@@ -379,6 +421,16 @@ impl<'a> Module<'a> {
     /// How many parameters at the end have defaults. A parameter without
     /// one after one with one can never be left out, so it's an error (§06).
     fn default_count(&mut self, f: &ast::Function) -> usize {
+        for p in f.params.iter().filter(|p| p.is_mut && p.default.is_some()) {
+            let d = Diagnostic::error(
+                codes::MUT_DEFAULT,
+                self.file,
+                p.span,
+                format!("`mut` parameter `{}` can't have a default value", p.name.name),
+            )
+            .with_label("a call that leaves it out has no value of its own for the function to change");
+            self.diags.push(d);
+        }
         let first = f.params.iter().position(|p| p.default.is_some()).unwrap_or(f.params.len());
         for p in &f.params[first..] {
             if p.default.is_none() {
@@ -416,10 +468,80 @@ impl<'a> Module<'a> {
                     }
                 },
             },
+            ast::TypeKind::Collection { name, args } => {
+                let want = if name == "map" { 2 } else { 1 };
+                if args.len() != want {
+                    let example = match name.as_str() {
+                        "map" => "map<string, int>",
+                        "set" => "set<string>",
+                        _ => "list<int>",
+                    };
+                    let what = if want == 2 { "a key type and a value type" } else { "one element type" };
+                    self.error(codes::SYNTAX, t.span, format!("`{name}` takes {what}, as in `{example}`"));
+                    return Ty::Poison;
+                }
+                let items: Vec<Ty> = args.iter().map(|a| self.value_type(a)).collect();
+                if items.contains(&Ty::Poison) {
+                    return Ty::Poison;
+                }
+                let elem = items[0].ir();
+                let ty = match name.as_str() {
+                    "list" => self.types.list(elem),
+                    "set" => self.types.set(elem),
+                    _ => self.types.map(elem, items[1].ir()),
+                };
+                if name != "list" && !self.types.hashable(elem) {
+                    let what = if name == "set" { "a set's elements" } else { "a map's keys" };
+                    let shown = self.tn(items[0]);
+                    self.error(codes::NOT_HASHABLE, args[0].span, format!("{what} must be hashable, and `{shown}` isn't")).label =
+                        Some(hashable_note(&self.types, elem));
+                    return Ty::Poison;
+                }
+                Ty::of(ty)
+            }
+            ast::TypeKind::Tuple(items) => {
+                if items.len() > MAX_ARITY {
+                    self.unsupported(t.span, &format!("tuples of more than {MAX_ARITY} values"));
+                    return Ty::Poison;
+                }
+                let items: Vec<Ty> = items.iter().map(|a| self.value_type(a)).collect();
+                if items.contains(&Ty::Poison) {
+                    return Ty::Poison;
+                }
+                Ty::of(self.types.tuple(items.into_iter().map(Ty::ir).collect()))
+            }
+            ast::TypeKind::Func { params, ret } => {
+                if params.len() > MAX_ARITY {
+                    self.unsupported(t.span, &format!("function types with more than {MAX_ARITY} parameters"));
+                    return Ty::Poison;
+                }
+                let params: Vec<Ty> = params.iter().map(|a| self.value_type(a)).collect();
+                let ret = self.resolve_type(ret);
+                if params.contains(&Ty::Poison) || ret == Ty::Poison {
+                    return Ty::Poison;
+                }
+                if ret == Ty::Never {
+                    self.unsupported(t.span, "function types that return never");
+                    return Ty::Poison;
+                }
+                Ty::of(self.types.func(params.into_iter().map(Ty::ir).collect(), ret.ir()))
+            }
             ast::TypeKind::Unsupported(what) => {
                 self.unsupported(t.span, what);
                 Ty::Poison
             }
+        }
+    }
+
+    /// A type that values have: not `void` or `never`.
+    fn value_type(&mut self, t: &ast::TypeExpr) -> Ty {
+        match self.resolve_type(t) {
+            v @ (Ty::Void | Ty::Never) => {
+                let name = self.tn(v);
+                self.error(codes::VOID_VALUE, t.span, format!("no value has type {name}, so it can't be part of another type"));
+                Ty::Poison
+            }
+            other => other,
         }
     }
 
@@ -446,21 +568,16 @@ impl<'a> Module<'a> {
                 if let Some(t) = &f.throws {
                     self.unsupported(t.span, "declared errors (`throws`)");
                 }
-                for p in &f.params {
-                    if p.is_mut {
-                        self.unsupported(p.span, "`mut` parameters");
-                    }
-                }
                 let params = self.sigs[i].params.clone();
                 let first_default = params.len() - self.sigs[i].defaults;
                 let mut body = Body::new(self, id, declared, f.name.name.clone());
-                for (j, (p, (name, ty))) in f.params.iter().zip(params).enumerate() {
+                for (j, (p, (name, ty, is_mut))) in f.params.iter().zip(params).enumerate() {
                     // A default sees the parameters before it.
                     if let (Some(d), true) = (p.default, j >= first_default) {
                         let later = f.params[j..].iter().map(|p| p.name.name.clone()).collect();
                         body.default_value(d, ty, later);
                     }
-                    body.declare_param(&name, ty, p.name.span);
+                    body.declare_param(&name, ty, p.name.span, is_mut);
                 }
                 body.finish_function(&f.body, f.name.span)
             }
@@ -497,13 +614,13 @@ impl<'a> Module<'a> {
             .with_label("importers read a module's interface without its bodies");
             if t != Ty::Poison {
                 d = d.with_fix(
-                    format!("declare `: {}`", t.name()),
+                    format!("declare `: {}`", self.tn(t)),
                     dat_diag::Applicability::Safe,
                     vec![dat_diag::Edit {
                         file: self.file,
                         span: Span::new(close, close),
                         before: String::new(),
-                        after: format!(": {}", t.name()),
+                        after: format!(": {}", self.tn(t)),
                     }],
                 );
             }
@@ -549,7 +666,7 @@ impl<'a> Module<'a> {
                 let after = if pure { "return;".to_string() } else { format!("{}; return;", self.text(e.span)) };
                 edits.push(dat_diag::edit(self.sources, self.file, stmt, &after));
             }
-            let mut d = Diagnostic::error(codes::BAD_MAIN, self.file, span, format!("`main` must return void, not {}", t.name()));
+            let mut d = Diagnostic::error(codes::BAD_MAIN, self.file, span, format!("`main` must return void, not {}", self.tn(t)));
             if !edits.is_empty() {
                 d = d.with_fix("return void", dat_diag::Applicability::Review, edits);
             }
@@ -563,6 +680,7 @@ impl<'a> Module<'a> {
         }
         let file = self.src().path.clone();
         let mut functions: Vec<ir::Function> = self.bodies.into_iter().map(Option::unwrap).collect();
+        functions.extend(self.arrows);
         mark_recursive(&mut functions);
         let tests = self
             .sigs
@@ -574,18 +692,45 @@ impl<'a> Module<'a> {
                 ir::Test { name: t.name.clone(), func: ir::FuncId(i as u32), loc: functions[i].loc }
             })
             .collect();
-        Some(ir::Program { file, functions, tests, main })
+        let mut program = ir::Program { file, functions, tests, main, types: self.types };
+        dat_own::run(&mut program);
+        Some(program)
+    }
+}
+
+/// Why `t` isn't hashable, for the label of E0151.
+pub(crate) fn hashable_note(types: &ir::Types, t: ir::Type) -> String {
+    match types.kind(t) {
+        None if t == ir::Type::Float => "floats aren't hashable, because `NaN != NaN`".to_string(),
+        Some(ir::Kind::Set(_) | ir::Kind::Map(..)) => "sets and maps aren't hashable".to_string(),
+        Some(ir::Kind::Func(..)) => "function values aren't hashable".to_string(),
+        Some(ir::Kind::List(e)) => hashable_note(types, *e),
+        Some(ir::Kind::Tuple(items)) => match items.iter().find(|i| !types.hashable(**i)) {
+            Some(i) => hashable_note(types, *i),
+            None => "it isn't hashable".to_string(),
+        },
+        _ => "hashable types are int, string, bool, and lists and tuples of them".to_string(),
     }
 }
 
 /// Marks the functions that are part of a call cycle, which must check the
-/// stack on entry. Tarjan's strongly connected components.
+/// stack on entry. Tarjan's strongly connected components. A call of a
+/// function value, or a method that calls a callback, may reach any
+/// function used as a value, named or arrow.
 fn mark_recursive(functions: &mut [ir::Function]) {
     let n = functions.len();
+    let mut as_values = Vec::new();
+    for f in functions.iter() {
+        let mut out = Calls::default();
+        f.body.iter().for_each(|s| calls_in_stmt(s, &mut out));
+        as_values.extend(out.values);
+    }
+    as_values.sort_unstable();
+    as_values.dedup();
     let edges: Vec<Vec<usize>> = functions
         .iter()
         .map(|f| {
-            let mut out = Vec::new();
+            let mut out = Calls::default();
             for s in &f.body {
                 calls_in_stmt(s, &mut out);
             }
@@ -593,7 +738,10 @@ fn mark_recursive(functions: &mut [ir::Function]) {
             for d in &f.defaults {
                 calls_in_expr(d, &mut out);
             }
-            out
+            if out.dynamic {
+                out.direct.extend(&as_values);
+            }
+            out.direct
         })
         .collect();
     struct State {
@@ -648,62 +796,29 @@ fn mark_recursive(functions: &mut [ir::Function]) {
     }
 }
 
-fn calls_in_stmt(s: &ir::Stmt, out: &mut Vec<usize>) {
-    use ir::Stmt::*;
-    match s {
-        Let(_, e) | Set(_, e) | Expr(e) | Throw(e, _) | Return(Some(e)) => calls_in_expr(e, out),
-        If(c, a, b) => {
-            calls_in_expr(c, out);
-            a.iter().chain(b).for_each(|s| calls_in_stmt(s, out));
-        }
-        Loop { cond, body, step } => {
-            if let Some(c) = cond {
-                calls_in_expr(c, out);
-            }
-            body.iter().chain(step).for_each(|s| calls_in_stmt(s, out));
-        }
-        Try { body, catches } => {
-            body.iter().for_each(|s| calls_in_stmt(s, out));
-            catches.iter().flat_map(|c| &c.body).for_each(|s| calls_in_stmt(s, out));
-        }
-        Return(None) | Break | Continue => {}
-    }
+/// The functions a body calls by name, the ones it uses as values, and
+/// whether it calls a function value.
+#[derive(Default)]
+struct Calls {
+    direct: Vec<usize>,
+    values: Vec<usize>,
+    dynamic: bool,
 }
 
-fn calls_in_expr(e: &ir::Expr, out: &mut Vec<usize>) {
-    use ir::ExprKind::*;
+fn calls_in_stmt(s: &ir::Stmt, out: &mut Calls) {
+    ir::each_part(s, &mut |p| match p {
+        ir::Part::Expr(e) => calls_in_expr(e, out),
+        ir::Part::Block(b) => b.iter().for_each(|s| calls_in_stmt(s, out)),
+    });
+}
+
+fn calls_in_expr(e: &ir::Expr, out: &mut Calls) {
     match &e.kind {
-        Call { func, args, .. } => {
-            out.push(func.0 as usize);
-            args.iter().for_each(|a| calls_in_expr(a, out));
-        }
-        Builtin { args, .. } => args.iter().for_each(|a| calls_in_expr(a, out)),
-        Int(_) | Float(_) | Bool(_) | Str(_) | Local(_) => {}
-        IntArith { lhs, rhs, .. } | FloatArith { lhs, rhs, .. } | Compare { lhs, rhs, .. } | And(lhs, rhs) | Or(lhs, rhs) => {
-            calls_in_expr(lhs, out);
-            calls_in_expr(rhs, out);
-        }
-        IntNeg { arg, .. } | FloatNeg(arg) | Not(arg) | ToStr(arg) | ErrorMessage(arg) | Print(arg) | Diverge(arg) => {
-            calls_in_expr(arg, out)
-        }
-        NewError { message, .. } | Fail { message, .. } => calls_in_expr(message, out),
-        Cond { cond, then, els } => {
-            calls_in_expr(cond, out);
-            calls_in_expr(then, out);
-            calls_in_expr(els, out);
-        }
-        Concat(parts) => parts.iter().for_each(|p| calls_in_expr(p, out)),
-        Assert(a) => {
-            match &a.cond {
-                ir::AssertCond::Plain(c) => calls_in_expr(c, out),
-                ir::AssertCond::Compare { lhs, rhs, .. } => {
-                    calls_in_expr(lhs, out);
-                    calls_in_expr(rhs, out);
-                }
-            }
-            if let Some(m) = &a.message {
-                calls_in_expr(m, out);
-            }
-        }
+        ir::ExprKind::Call { func, .. } => out.direct.push(func.0 as usize),
+        ir::ExprKind::FuncRef(f) | ir::ExprKind::Closure { func: f, .. } => out.values.push(f.0 as usize),
+        ir::ExprKind::CallValue { .. } => out.dynamic = true,
+        ir::ExprKind::Method { op, .. } | ir::ExprKind::Mutate { op, .. } if op.takes_callback() => out.dynamic = true,
+        _ => {}
     }
+    ir::each_child(e, &mut |c| calls_in_expr(c, out));
 }

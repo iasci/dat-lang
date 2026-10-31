@@ -1,0 +1,17 @@
+# Golden results for copies.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== run --report-copies
+status: 0
+--- stdout
+3 [1, 2, 3, 4]
+[[1], [2]] [1, 9]
+[1, 2, 3] [1, 2, 3, 4] [1, 1, 2] abc ab
+--- stderr
+copies: 6 at 6 places
+  copies.dat:6:3 in both: 1 copy, 1 element
+  copies.dat:12:3 in grow: 1 copy, 2 elements
+  copies.dat:23:3 in main: 1 copy, 3 elements
+  copies.dat:40:3 in main: 1 copy, 3 elements
+  copies.dat:46:3 in main: 1 copy, 1 element
+  copies.dat:52:3 in main: 1 copy, 2 bytes

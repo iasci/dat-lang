@@ -1,0 +1,55 @@
+// The copies §02 says a last use still makes, each reported where it
+// happens by `--report-copies`, the same in both modes.
+
+function both(a: list<int>, b: list<int>): list<int> {
+  let r = a;
+  r.push(b.length);
+  return r;
+}
+
+function grow(xs: list<int>): list<int> {
+  let r = xs;
+  r.push(r.length);
+  if (r.length > 100) {
+    throw RangeError { message: "too long" };
+  }
+  return r;
+}
+
+function main(): void {
+  // Another copy still shares it.
+  let xs = [1, 2, 3];
+  let kept = xs;
+  xs.push(4);
+
+  // A variable used twice in one call.
+  let acc = [1];
+  acc = both(acc, acc);
+
+  // Inside a `try`, a variable the `catch` can read.
+  try {
+    acc = grow(acc);
+  } catch {
+    print("caught", acc);
+  }
+
+  // A variable a closure captured, until the closure's last use.
+  const base = [1, 2, 3];
+  const count = () => base.length;
+  let more = base;
+  more.push(4);
+  print(count(), more);
+
+  // A value taken out of a list that's still used.
+  let grid = [[1], [2]];
+  let row = grid[0];
+  row.push(9);
+  print(grid, row);
+
+  // A string another copy shares.
+  let s = "ab";
+  let t = s;
+  s += "c";
+
+  print(kept, xs, acc, s, t);
+}

@@ -170,10 +170,13 @@ struct Crate {
     _lock: std::fs::File,
 }
 
-fn prepare(programs: &[&Program], entry: &Entry, kind: &str) -> Result<Crate, String> {
+fn prepare(programs: &[&Program], entry: &Entry, kind: &str, report_copies: bool) -> Result<Crate, String> {
     let cwd = std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_default();
     let guard = if crate::no_stack_guard() { "no-guard" } else { "guard" };
     let mut key: Vec<&str> = vec![kind, &cwd, guard];
+    if report_copies {
+        key.push("copies");
+    }
     key.extend(programs.iter().map(|p| p.file.as_str()));
     let name = format!("dat_{:016x}", hash(&key));
     let dir = cache_dir().join("crates").join(&name);
@@ -197,7 +200,7 @@ fn prepare(programs: &[&Program], entry: &Entry, kind: &str) -> Result<Crate, St
     write_if_changed(&dir.join("Cargo.toml"), &manifest)?;
     write_if_changed(&dir.join("Cargo.lock"), &lock_file(&name))?;
     write_if_changed(&dir.join("rust-toolchain.toml"), &format!("[toolchain]\nchannel = \"{TOOLCHAIN}\"\n"))?;
-    write_if_changed(&dir.join("src/main.rs"), &emit_crate(programs, entry))?;
+    write_if_changed(&dir.join("src/main.rs"), &emit_crate(programs, entry, report_copies))?;
     Ok(Crate { dir, name, _lock: lock })
 }
 
@@ -253,13 +256,14 @@ fn exit_code(status: std::process::ExitStatus) -> i32 {
 }
 
 /// Compiles the programs and runs the result with stdio inherited. Returns
-/// the program's exit status.
-pub fn run_compiled(programs: &[&Program], mode: Mode) -> Result<i32, String> {
+/// the program's exit status. With `report_copies`, the program reports its
+/// copies at the end (`--report-copies`).
+pub fn run_compiled(programs: &[&Program], mode: Mode, report_copies: bool) -> Result<i32, String> {
     let (entry, kind) = match &mode {
         Mode::Run => (Entry::Run, "run"),
         Mode::Test { .. } => (Entry::Test, "test"),
     };
-    let c = prepare(programs, &entry, kind)?;
+    let c = prepare(programs, &entry, kind, report_copies)?;
     let exe = cargo_build(&c, "release")?;
     let mut cmd = Command::new(&exe);
     if let Mode::Test { filter, verbose } = &mode {
@@ -280,7 +284,7 @@ pub fn run_compiled(programs: &[&Program], mode: Mode) -> Result<i32, String> {
 /// `dat build`: compiles `program` with the distribution profile and copies
 /// the executable to `out`.
 pub fn build_executable(program: &Program, out: &Path) -> Result<(), String> {
-    let c = prepare(&[program], &Entry::Run, "build")?;
+    let c = prepare(&[program], &Entry::Run, "build", false)?;
     let exe = cargo_build(&c, "dat-dist")?;
     std::fs::copy(&exe, out).map_err(|e| format!("can't write {}: {e}", out.display()))?;
     if cfg!(target_os = "macos") {

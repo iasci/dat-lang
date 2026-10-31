@@ -1,0 +1,24 @@
+// Mistakes with lists, sets, maps and tuples.
+
+function main(): void {
+  const fixed = [1, 2];
+  fixed.push(3);
+  fixed[0] = 10;
+  let items = [];
+  let lookup = {};
+  const entry: [string, int] = ["alice", 30];
+  let i = 0;
+  print(entry[i], entry[2]);
+  let bad: set<float> = [];
+  print(fixed.length(), fixed.unique2(), [1, 2].push(3));
+  let m = { a: 1 };
+  print(m.a, m[1], "a" in fixed);
+  const fns = [(x: int) => x];
+  print(fns.includes(fns[0]), [1.5, 2.5].unique(), [[1]].sort());
+  let mixed = [1, "two"];
+  const tags: set<string> = ["a"];
+  print(tags[0], [...5]);
+  if (fixed.length) {
+    print("non-empty");
+  }
+}

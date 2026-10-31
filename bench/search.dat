@@ -1,0 +1,25 @@
+// Shown by `dat-conformance perf`: a function of ours that takes a callback,
+// called with a new arrow function on each pass of a loop. The callback is
+// only called, so the function borrows it, and the arrow function is never
+// allocated.
+function firstTrue(lo: int, hi: int, pred: (x: int) => bool): int {
+  let a = lo;
+  let b = hi;
+  while (a < b) {
+    const mid = ((a + b) / 2).toInt();
+    if (pred(mid)) {
+      b = mid;
+    } else {
+      a = mid + 1;
+    }
+  }
+  return a;
+}
+
+function main(): void {
+  let total = 0;
+  for (const n of range(1_000_000)) {
+    total += firstTrue(0, 1_000, (x) => x * x >= n);
+  }
+  print(total);
+}

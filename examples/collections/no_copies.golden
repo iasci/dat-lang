@@ -1,0 +1,72 @@
+# Golden results for no_copies.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== run --report-copies
+status: 0
+--- stdout
+1010 abcd {"red": ["Ada", "Lin", "Ola", "Kai"], "blue": ["Bo"]} 52 51 100
+--- stderr
+copies: none
+
+=== ir
+status: 0
+--- stdout
+program "no_copies.dat"
+main = fn2
+
+fn0 "append"(%0 xs: list<int>, %1 x: int) -> list<int> @5:1
+  local %2 r: list<int>
+  let %2 = (move %0)
+  (ListPush %2 %1)
+  return (move %2)
+
+fn1 "addAll"(%0 mut into: list<int>, %1 n: int) -> void @11:1
+  local %2 i: int
+  for %2 of (range @12:19 0 %1 1)
+    (ListPush %0 %2)
+
+fn2 "main"() -> void @17:1
+  local %0 items: list<int> mut
+  local %1 n: int
+  local %2 text: string mut
+  local %3 word: string
+  local %4 byTeam: map<string, list<string>>
+  local %5 person: string
+  local %6 team: string
+  local %7 members: list<string>
+  local %8 grid: list<list<int>>
+  local %9 i: int
+  local %10 row: list<int>
+  local %11 row: list<int> ref
+  local %12 queue: list<int>
+  local %13 seen: int mut
+  local %14 next: int
+  let %0 = (list.list<int>)
+  for %1 of (range @20:19 0 1000 1)
+    set %0 = (call fn0 @21:13 (move %0) %1)
+  let %2 = ""
+  for %3 of (list.list<string> "a" "b" "c" "d")
+    set %2 = (concat %2 %3)
+  let %4 = (map.map<string, list<string>>)
+  for %5 of (list.list<string> "Ada" "Lin" "Ola" "Bo")
+    let %6 = (cond (gt.int (text.length %5) 2) "red" "blue")
+    let %7 = (MapTake %4 %6 (list.list<string>))
+    (ListPush %7 (move %5))
+    store %4{@36:5 (move %6)} = (move %7)
+  let %8 = (list.list<list<int>> (list.list<int>) (list.list<int>))
+  for %9 of (range @41:19 0 100 1)
+    let %10 = (Take %8[@42:15 (rem.int @42:20 %9 2)])
+    (ListPush %10 %9)
+    store %8[@44:5 (rem.int @44:10 %9 2)] = (move %10)
+  (ListPush %4{@48:3 "red"} "Kai")
+  (ListPush %8[@49:3 0] -1)
+  (call fn1 @50:3 (mut %0) 10)
+  for mut %11 of %8
+    (ListPush %11 0)
+  let %12 = (list.list<int> 1)
+  let %13 = 0
+  loop while (and (gt.int (ListLength %12) 0) (lt.int %13 100))
+    let %14 = (ListShift @59:18 %12)
+    set %13 = (add.int @60:5 %13 1)
+    (ListPush %12 (add.int @61:16 %14 1))
+  (print (concat (str.int (ListLength %0)) " " %2 " " (str.map<string, list<string>> %4) " " (str.int (ListLength (index @64:37 %8 0))) " " (str.int (ListLength (index @64:53 %8 1))) " " (str.int %13)))

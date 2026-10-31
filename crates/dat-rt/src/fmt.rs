@@ -128,6 +128,13 @@ pub fn debug_bool(b: bool) -> String {
 /// A string as a dat literal: quoted, with the spec's escapes.
 pub fn debug_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
+    write_debug_str(&mut out, s);
+    out
+}
+
+/// [`debug_str`], written at the end of `out`.
+pub(crate) fn write_debug_str(out: &mut String, s: &str) {
+    out.reserve(s.len() + 2);
     out.push('"');
     for c in s.chars() {
         match c {
@@ -142,7 +149,6 @@ pub fn debug_str(s: &str) -> String {
         }
     }
     out.push('"');
-    out
 }
 
 // The spec's examples use 3.14 and 3.14159, which aren't meant as π.

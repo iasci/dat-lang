@@ -1,0 +1,55 @@
+// Arrow functions, function types, closures and named functions as values (§06).
+
+function apply(x: int, transform: (value: int) => int): int {
+  return transform(x);
+}
+
+function square(n: int): int {
+  return n * n;
+}
+
+function adder(n: int): (x: int) => int {
+  return (x) => x + n;
+}
+
+function twice(f: (s: string) => string, s: string): string {
+  return f(f(s));
+}
+
+function main(): void {
+  const double = (x: int): int => x * 2;
+  const greet = (name: string) => {
+    print(`Hello, ${name}`);
+  };
+  const answer = () => 42;
+  greet("Ada");
+  print(double(4), answer(), apply(3, square), apply(3, (n) => n + 1), apply(5, double));
+  const rate = 0.2;
+  const withTax = (price: float) => price * (1.0 + rate);
+  print(withTax(10.0));
+  const add5 = adder(5);
+  const fns = [adder(1), adder(10), square];
+  print(add5(1), fns.map((f) => f(3)), fns[2](4), fns);
+  print(twice((s) => s + "!", "hi"), double, [1, 2, 3].map(double));
+  let total = 0;
+  for (const f of fns) {
+    total += f(1);
+  }
+  print(total);
+  // A closure keeps the copy it made, whatever the list becomes later.
+  let base = [1, 2];
+  const items = base;
+  const count = () => items.length;
+  base.push(3);
+  print(count(), base.length);
+  const nested = (x: int) => (y: int) => x * y;
+  print(nested(3)(4));
+  const sum = [1.5, 2.5].reduce((s, x) => s + x, 0.0);
+  print(sum);
+  // A declared return type with brackets, a map literal as the body, and
+  // an empty initial value whose type comes from where the result goes.
+  const pair = (x: int): [int, string] => [x, `${x}`];
+  const box = (x: int) => { value: x };
+  const evens: list<int> = [1, 2, 3, 4].reduce((acc, x) => x % 2 == 0 ? acc.concat([x]) : acc, []);
+  print(pair(1), box(2), evens);
+}

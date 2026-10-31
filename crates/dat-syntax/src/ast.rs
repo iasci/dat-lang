@@ -135,7 +135,13 @@ pub struct TypeExpr {
 pub enum TypeKind {
     /// `int`, `string`, `RangeError`, ...
     Named(String),
-    /// Generic, nullable, union, tuple and function types.
+    /// `list<int>`, `set<string>`, `map<string, int>`.
+    Collection { name: String, args: Vec<TypeExpr> },
+    /// `[string, int]`
+    Tuple(Vec<TypeExpr>),
+    /// `(value: int) => int`. Parameter names are documentation only.
+    Func { params: Vec<TypeExpr>, ret: Box<TypeExpr> },
+    /// Generic, nullable and union types, and `throws` in a function type.
     Unsupported(&'static str),
 }
 
@@ -213,13 +219,68 @@ pub enum StmtKind {
         catches: Vec<Catch>,
         finally: Option<Block>,
     },
-    /// A statement the parser recognised but skipped, such as `for...of`.
+    /// `const [a, b] = xs;`: a declaration that destructures.
+    Destructure {
+        is_const: bool,
+        pattern: Pattern,
+        ty: Option<TypeExpr>,
+        init: ExprId,
+    },
+    /// `for (const x of xs)`, `for (let x of xs)` or `for (mut x of xs)`.
+    ForOf {
+        binding: Binding,
+        pattern: Pattern,
+        iter: ExprId,
+        body: Block,
+    },
+    /// A statement the parser recognised but skipped, such as a bare block.
     Unsupported {
         what: &'static str,
     },
     /// A statement with a syntax error, already reported. Parsing resumed
     /// after it.
     Error,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Binding {
+    Const,
+    Let,
+    Mut,
+}
+
+/// What a declaration or a loop header binds.
+#[derive(Clone, Debug)]
+pub enum Pattern {
+    Name(Ident),
+    /// `_`: the value is dropped.
+    Ignore(Span),
+    /// `[a, b = 0, ...rest]`
+    List {
+        items: Vec<PatItem>,
+        rest: Option<Ident>,
+        span: Span,
+    },
+    /// `{ name, age }`, which needs structs.
+    Unsupported {
+        what: &'static str,
+        span: Span,
+    },
+}
+
+impl Pattern {
+    pub fn span(&self) -> Span {
+        match self {
+            Pattern::Name(n) => n.span,
+            Pattern::Ignore(s) | Pattern::List { span: s, .. } | Pattern::Unsupported { span: s, .. } => *s,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PatItem {
+    pub pattern: Pattern,
+    pub default: Option<ExprId>,
 }
 
 #[derive(Clone, Debug)]
@@ -306,6 +367,30 @@ pub struct Arg {
 }
 
 #[derive(Clone, Debug)]
+pub enum MapEntry {
+    /// `alice: 30`: a name before `:` is a string key.
+    Named(Ident, ExprId),
+    /// `"content-type": ...`, `1: ...` or `[key]: ...`.
+    Keyed(ExprId, ExprId),
+    Spread(ExprId),
+}
+
+#[derive(Clone, Debug)]
+pub struct Arrow {
+    pub params: Vec<Param>,
+    pub ret: Option<TypeExpr>,
+    pub body: ArrowBody,
+    /// From `(` to `=>`, for fixes that add parameter types.
+    pub head: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum ArrowBody {
+    Expr(ExprId),
+    Block(Block),
+}
+
+#[derive(Clone, Debug)]
 pub enum ExprKind {
     /// An integer literal. `None` when it doesn't fit in 64 bits.
     Int(Option<u64>),
@@ -341,7 +426,14 @@ pub enum ExprKind {
         name: Ident,
         fields: Vec<(Ident, ExprId)>,
     },
+    /// A list literal, which is a set or a tuple where one is expected.
     List(Vec<ExprId>),
+    /// `{ a: 1, "b": 2, [k]: v, ...m }`
+    Map(Vec<MapEntry>),
+    /// `...xs` in a list literal or an argument list.
+    Spread(ExprId),
+    /// `(x: int): int => x * 2` or `(x) => { ... }`.
+    Arrow(Box<Arrow>),
     Paren(ExprId),
     /// `cond ? then : els`
     Cond {

@@ -1,0 +1,76 @@
+// A variable's last use hands its value over (the liveness pass), and none
+// of these may be told apart from copying it.
+
+function id(xs: list<int>): list<int> {
+  return xs;
+}
+
+function first(xs: list<int>): int {
+  return xs[0];
+}
+
+function change(mut k: string): void {
+  k = "b";
+}
+
+function fill(mut b: list<int>, a: list<int>): void {
+  b.clear();
+  b.push(a.length);
+}
+
+function boom(xs: list<int>): list<int> {
+  if (xs.length > 1) {
+    throw RangeError { message: "boom" };
+  }
+  return xs;
+}
+
+function main(): void {
+  // A receiver or an index base is read while the arguments are worked out.
+  let xs = [1, 2];
+  print(xs.concat(id(xs)));
+  let ys = [1, 2];
+  print(ys[first(ys)]);
+  // The key changes between the take and the store: no take.
+  let m: map<list<int>, list<int>> = {};
+  let k = [1];
+  m[k] = [10];
+  let vs = m.get(k, []);
+  vs.push(2);
+  k.push(9);
+  m[k] = vs;
+  print(m);
+  let byName: map<string, list<int>> = { a: [1] };
+  let name = "a";
+  let ws = byName.get(name, []);
+  ws.push(2);
+  change(mut name);
+  byName[name] = ws;
+  print(byName);
+  // A value passed `mut` and also as a copy.
+  let a = [1, 2];
+  fill(mut a, a);
+  print(a);
+  // `?:` with collections.
+  const n = xs.length > 1 ? xs : [0];
+  let copy = n;
+  copy.push(9);
+  print(xs, n, copy);
+  // Inside a `try`, what the `catch` reads isn't handed over.
+  let d = [3, 4];
+  try {
+    d = boom(d);
+  } catch (e) {
+    print(e, d);
+  }
+  let acc: list<int> = [];
+  for (const i of range(3)) {
+    try {
+      acc = boom(acc);
+      acc.push(i);
+    } catch (e) {
+      print("caught", acc);
+    }
+  }
+  print(acc);
+}

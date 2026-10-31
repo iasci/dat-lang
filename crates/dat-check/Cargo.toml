@@ -10,3 +10,4 @@ publish.workspace = true
 dat-diag.workspace = true
 dat-syntax.workspace = true
 dat-ir.workspace = true
+dat-own.workspace = true

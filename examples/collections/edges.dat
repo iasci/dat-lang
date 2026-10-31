@@ -1,0 +1,63 @@
+// Cases the M2 code review found, each of which once failed in one run
+// mode or differed between the two.
+
+function count(xs: list<int>): int {
+  return xs.length;
+}
+
+// The parameter's last use is inside a `try`.
+function guarded(xs: list<int>): int {
+  try {
+    return count(xs);
+  } catch (e) {
+    return -1;
+  }
+}
+
+function pick(): (x: int) => bool {
+  print("callback");
+  return (x: int) => x > 10;
+}
+
+function fallback(): int {
+  print("fallback");
+  return -1;
+}
+
+function main(): void {
+  // Tuples of one value, of none, and of nine.
+  const one: [int] = [1];
+  const none: [] = [];
+  const nine: [int, int, int, int, int, int, int, int, int] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  print(one, none, nine, one == [1]);
+  const seen: set<[int]> = [[1], [1], [2]];
+  print(seen.size);
+
+  // A function value with nine parameters.
+  const sum9 = (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int): int => a + b + c + d + e + f + g + h + i;
+  print(sum9(1, 2, 3, 4, 5, 6, 7, 8, 9));
+
+  print(guarded([1, 2, 3]));
+
+  // `>=` right after a type is its `>` and an `=`.
+  let xs: list<int>= [3, 20, 7];
+  let byName: map<string, list<int>>= {};
+  byName["a"] = xs;
+  print(byName, xs.length >= 3);
+
+  // The callback is evaluated before the fallback.
+  print(xs.find(pick(), fallback()));
+
+  // Longer than the longest list or string: a RangeError, decided before
+  // anything is allocated.
+  try {
+    print(range(0, 1_000_000_000_000_000).length);
+  } catch (e) {
+    print(e.message);
+  }
+  try {
+    print("ab".repeat(1_000_000_000_000_000).length);
+  } catch (e) {
+    print(e.message);
+  }
+}

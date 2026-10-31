@@ -28,8 +28,10 @@ dat fix src/users.dat
 | --- | --- | --- |
 | `--compiled` | `run`, `test` | Compile to Rust and run that instead of the interpreter. The results are the same; only speed differs. |
 | `--json` | all | Print diagnostics as JSON instead of text. See [Diagnostics](#diagnostics). |
+| `--version` | none | Print dat's version and the commit it was built from, then exit. |
 | `--filter <text>` | `test` | Run only the tests whose name contains `text` |
 | `--verbose` | `test` | Also list each test that passes |
+| `--report-copies` | `run`, `test` | After the run, print to stderr how often a change copied a value that another copy still shared, by where it happened. See [Copy Report](#copy-report). |
 
 ## Output and Exit Status
 
@@ -40,6 +42,18 @@ stdout carries results: what the program prints, and the `dat test` report. stde
 | `0` | Success |
 | `1` | The command ran and found a problem: `check`, `build` or `fix` found errors, a test failed, or an error escaped `main` |
 | `2` | The command couldn't do its job: `run` or `test` hit a compile error, an option or file doesn't exist, or a `--filter` matches no test |
+
+### Copy Report
+
+A list, set, map or string copies its contents when it's changed while another copy of it exists ([§02](./02-variable-declaration.md#what-never-copies)). `--report-copies` counts those copies by the change that made them, in both run modes, and prints them after the run:
+
+```
+copies: 2 at 2 places
+  app.dat:12:3 in addTag: 1 copy, 3 elements
+  app.dat:30:5 in main: 1 copy, 18 bytes
+```
+
+Each line is a change (`push`, `xs[i] = v`, `s += t`, a `mut` argument, a `for (mut ...)` loop) and the function it's in, how many copies it made, and how many elements, or bytes of a string, they copied. `copies: none` means nothing was copied. A copy in a loop shows as one line with a count that grows with the loop.
 
 ## Diagnostics
 

@@ -117,6 +117,13 @@ fn push_indent(out: &mut String, n: usize) {
     }
 }
 
+/// `s` as a JSON string, quoted and escaped.
+pub fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    write_str(&mut out, s);
+    out
+}
+
 fn write_str(out: &mut String, s: &str) {
     out.push('"');
     for c in s.chars() {
@@ -257,6 +264,11 @@ impl Parser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_strings_escape_control_characters() {
+        assert_eq!(json_string("a\u{1b}b\0\"\n"), "\"a\\u001bb\\u0000\\\"\\n\"");
+    }
 
     #[test]
     fn round_trip() {

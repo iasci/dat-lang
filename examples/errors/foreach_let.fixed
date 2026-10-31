@@ -1,0 +1,10 @@
+// E0603's fix: a `forEach` whose callback changes a `let` becomes a loop.
+
+function main(): void {
+  let total = 0;
+  const items = [1, 2, 3];
+  for (const item of items) {
+    total += item;
+  }
+  print(total);
+}

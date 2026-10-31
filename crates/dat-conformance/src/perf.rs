@@ -124,6 +124,32 @@ fn rustc(src: &Path, exe: &Path) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// §02's patterns that never copy, each run `n` times: quadratic time
+/// would mean a copy per step.
+const COMPLEXITY: &[(&str, &str)] = &[
+    ("append", "let items: list<int> = [];\n  for (const i of range(N)) {\n    items = append(items, i);\n  }\n  print(items.length);"),
+    ("string", "let text = \"\";\n  for (const i of range(N)) {\n    text += \"x\";\n  }\n  print(text.length);"),
+    (
+        "map-take",
+        "let byKey: map<int, list<int>> = {};\n  for (const i of range(N)) {\n    const k = i % 7;\n    let xs = byKey.get(k, []);\n    xs.push(i);\n    byKey[k] = xs;\n  }\n  print(byKey.size);",
+    ),
+    (
+        "list-take",
+        "let rows: list<list<int>> = [[], [], []];\n  for (const i of range(N)) {\n    const k = i % 3;\n    let row = rows[k];\n    row.push(i);\n    rows[k] = row;\n  }\n  print(rows[0].length);",
+    ),
+    (
+        "shift",
+        "let queue = [0];\n  let seen = 0;\n  while (!queue.isEmpty()) {\n    const v = queue.shift();\n    seen++;\n    if (v < N) {\n      queue.push(v + 1);\n    }\n  }\n  print(seen);",
+    ),
+];
+
+fn complexity_program(body: &str, n: usize) -> String {
+    format!(
+        "function append(xs: list<int>, x: int): list<int> {{\n  let r = xs;\n  r.push(x);\n  return r;\n}}\n\nfunction main(): void {{\n  {}\n}}\n",
+        body.replace('N', &n.to_string())
+    )
+}
+
 pub fn run(opts: &Opts) -> bool {
     let dat = dat_binary();
     let root = &opts.root;
@@ -191,6 +217,13 @@ pub fn run(opts: &Opts) -> bool {
         ("mutual", "generated mutual recursion vs hand-written"),
         ("primes", "generated primes loop vs hand-written"),
         ("rows", "generated string rows vs hand-written"),
+        ("wordcount", "generated word count (map) vs hand-written"),
+        ("groups", "generated grouping (take and restore) vs hand"),
+        ("append", "generated append-built list vs hand-written"),
+        ("bfs", "generated BFS with shift vs hand-written"),
+        ("sortcmp", "generated sort with comparator vs hand-written"),
+        ("chains", "generated map/filter/reduce vs hand-written"),
+        ("search", "generated search with a callback vs hand"),
     ];
     for (name, what) in others {
         let (hand, ours) = (out.join(format!("{name}_hand")), out.join(format!("{name}_dat")));
@@ -203,6 +236,36 @@ pub fn run(opts: &Opts) -> bool {
         }
         let t = time_interleaved(&mut [&mut Command::new(&ours), &mut Command::new(&hand)], RUNS).unwrap();
         shown(what, t[0], t[1], "hand-written");
+    }
+
+    println!("complexity: n and 4n, linear is about 4x (M2 criterion 8)");
+    let dir = out.join("complexity");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, body) in COMPLEXITY {
+        for (mode, n) in [("interpreted", 100_000), ("compiled", 1_000_000)] {
+            let mut times = Vec::new();
+            for size in [n, 4 * n] {
+                let file = format!("{name}_{size}.dat");
+                std::fs::write(dir.join(&file), complexity_program(body, size)).unwrap();
+                let mut cmd = if mode == "compiled" {
+                    let exe = dir.join(format!("{name}_{size}"));
+                    if !run_in(&dir, &["build", &file, "-o"]).arg(&exe).status().is_ok_and(|s| s.success()) {
+                        g.failed.push(format!("build complexity {name}"));
+                        break;
+                    }
+                    Command::new(exe)
+                } else {
+                    run_in(&dir, &["run", &file])
+                };
+                times.push(time(&mut cmd, 5).unwrap());
+            }
+            if let [small, large] = times[..] {
+                let what = format!("{mode} {name}");
+                let r = large.as_secs_f64() / small.as_secs_f64().max(1e-9);
+                let verdict = g.judge(&what, r, 8.0);
+                println!("  {what:<44} {:>9.1} ms   4n {:.1} ms: {r:.1}x   gate 8x   {verdict}", ms(small), ms(large));
+            }
+        }
     }
 
     println!("interpreter speed (criterion 16)");
@@ -218,6 +281,13 @@ pub fn run(opts: &Opts) -> bool {
             ("primes", "interpreted primes loop vs CPython"),
             ("rows", "interpreted string rows vs CPython"),
             ("floats", "interpreted floats vs CPython"),
+            ("wordcount", "interpreted word count vs CPython"),
+            ("groups", "interpreted grouping vs CPython"),
+            ("append", "interpreted append-built list vs CPython"),
+            ("bfs", "interpreted BFS vs CPython"),
+            ("sortcmp", "interpreted sort with comparator vs CPython"),
+            ("chains", "interpreted map/filter/reduce vs CPython"),
+            ("search", "interpreted search with a callback vs CPython"),
         ] {
             let mut ours = run_in(&bench, &["run", &format!("{name}.dat")]);
             let mut cpython = Command::new("python3");
@@ -231,7 +301,9 @@ pub fn run(opts: &Opts) -> bool {
 
     println!("generated Rust per line of dat, shown but not judged");
     let (mut dat_total, mut rust_total) = (0, 0);
-    for name in ["fib35", "ack", "mutual", "primes", "rows", "floats"] {
+    for name in
+        ["fib35", "ack", "mutual", "primes", "rows", "floats", "wordcount", "groups", "append", "bfs", "sortcmp", "chains", "search"]
+    {
         let src = std::fs::read_to_string(bench.join(format!("{name}.dat"))).unwrap_or_default();
         let rust = run_in(&bench, &["rust", &format!("{name}.dat")]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string());
         let (d, r) = (code_lines(&src), code_lines(&rust.unwrap_or_default()));

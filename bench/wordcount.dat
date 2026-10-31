@@ -1,0 +1,10 @@
+// Shown by `dat-conformance perf`: counting words with a map.
+// Against bench/wordcount.rs compiled and bench/wordcount.py interpreted.
+function main(): void {
+  let counts: map<string, int> = {};
+  for (const i of range(500_000)) {
+    const word = `w${(i * 7919) % 5000}`;
+    counts[word] = counts.get(word, 0) + 1;
+  }
+  print(counts.size, counts["w0"], counts["w4999"]);
+}

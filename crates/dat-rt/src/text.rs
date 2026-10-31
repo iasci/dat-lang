@@ -5,7 +5,7 @@
 //! `try_*` functions are for the interpreter. The others are for generated
 //! code: the ones that can fail take the operation's location and throw.
 
-use crate::{DatError, ErrorKind, Loc, Str, throw};
+use crate::{DatError, ErrorKind, List, Loc, Str, throw};
 
 type R<T> = Result<T, Box<DatError>>;
 
@@ -146,12 +146,11 @@ pub fn replace_all(s: &str, from: &str, to: &str) -> Str {
     Str::from_string(s.replace(from, to))
 }
 
-/// A buffer for a result of `bytes` bytes, or a `RangeError` if it can't
-/// have one, instead of the allocation failure that would end the program.
+/// A buffer for a result of `bytes` bytes, or a `RangeError` if that's
+/// longer than [`crate::MAX_LEN`].
 fn buffer(bytes: Option<usize>, call: impl FnOnce() -> String) -> R<String> {
-    let mut out = String::new();
     match bytes {
-        Some(n) if out.try_reserve_exact(n).is_ok() => Ok(out),
+        Some(n) if n <= crate::MAX_LEN => Ok(String::with_capacity(n)),
         _ => Err(range_error(format!("string too long: {}", call()))),
     }
 }
@@ -224,6 +223,20 @@ pub fn pad_end(s: &str, length: i64, fill: &str, loc: &'static Loc) -> Str {
     or_throw(try_pad_end(s, length, fill), loc)
 }
 
+/// `s.split(separator)`. Separators at the edges give empty strings; an
+/// empty separator gives the characters, as `[...s]` does.
+pub fn split(s: &str, separator: &str) -> List<Str> {
+    if separator.is_empty() {
+        return chars(s);
+    }
+    s.split(separator).map(Str::new).collect()
+}
+
+/// `[...s]`: each character as a string.
+pub fn chars(s: &str) -> List<Str> {
+    s.char_indices().map(|(i, c)| Str::new(&s[i..i + c.len_utf8()])).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,5 +285,17 @@ mod tests {
         assert_eq!(index_of("héllo", "l"), 3);
         assert_eq!(ok(Ok(replace("a-b-c", "-", "+"))), "a+b-c");
         assert_eq!(ok(Ok(replace_all("a-b-c", "-", "+"))), "a+b+c");
+    }
+
+    #[test]
+    fn split_and_chars() {
+        let shown = |l: List<Str>| crate::debug(&l);
+        assert_eq!(shown(split("a,b,,c", ",")), r#"["a", "b", "", "c"]"#);
+        assert_eq!(shown(split("a,", ",")), r#"["a", ""]"#);
+        assert_eq!(shown(split("", ",")), r#"[""]"#);
+        assert_eq!(shown(split("a--b", "--")), r#"["a", "b"]"#);
+        assert_eq!(shown(split("héllo", "")), r#"["h", "é", "l", "l", "o"]"#);
+        assert_eq!(shown(split("", "")), "[]");
+        assert_eq!(shown(chars("ab")), r#"["a", "b"]"#);
     }
 }

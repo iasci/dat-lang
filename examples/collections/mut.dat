@@ -1,0 +1,116 @@
+// `mut` parameters, arguments and loop variables (§06, §07).
+
+function addTag(mut tags: list<string>, tag: string): void {
+  tags.push(tag);
+}
+
+function bump(mut n: int): void {
+  n += 1;
+}
+
+function reset(mut xs: list<int>): void {
+  xs = [];
+}
+
+function fill(mut counts: map<string, int>, word: string): void {
+  counts[word] = counts.get(word, 0) + 1;
+}
+
+function failAfterChange(mut xs: list<int>): void {
+  xs.push(99);
+  throw RangeError { message: "stop" };
+}
+
+function swap(mut a: int, mut b: int): void {
+  const t = a;
+  a = b;
+  b = t;
+}
+
+function moveAll(mut from: list<string>, mut to: list<string>): void {
+  for (const x of from) {
+    to.push(x);
+  }
+  from = [];
+}
+
+function bumpBoth(mut a: int, mut b: int): void {
+  a += 100;
+  b += 100;
+  throw RangeError { message: "halfway" };
+}
+
+function main(): void {
+  let tags: list<string> = [];
+  addTag(mut tags, "admin");
+  addTag(mut tags, "ops");
+  print(tags);
+  let counts = [0, 5];
+  bump(mut counts[0]);
+  bump(mut counts[1]);
+  bump(mut counts[1]);
+  print(counts);
+  let grid = [[1], [2]];
+  addTag2(mut grid[1]);
+  print(grid);
+  reset(mut grid[0]);
+  print(grid);
+  let words: map<string, int> = {};
+  for (const w of ["a", "b", "a"]) {
+    fill(mut words, w);
+  }
+  print(words);
+  let xs = [1];
+  try {
+    failAfterChange(mut xs);
+  } catch (e) {
+    print(e, xs);
+  }
+
+  // Two parts of one value, visibly different.
+  let nums = [1, 2, 3];
+  swap(mut nums[0], mut nums[2]);
+  print(nums);
+  let lists = [["a", "b"], ["c"]];
+  moveAll(mut lists[0], mut lists[1]);
+  print(lists);
+  let queues = { "todo": ["x", "y"], "done": ["z"] };
+  moveAll(mut queues["todo"], mut queues["done"]);
+  print(queues);
+  let cells = [[1, 2], [3, 4]];
+  swap(mut cells[0][1], mut cells[1][0]);
+  const r = 1;
+  swap(mut cells[r][0], mut cells[r][1]);
+  print(cells);
+  let pair: [int, int] = [5, 6];
+  swap(mut pair[0], mut pair[1]);
+  print(pair);
+  try {
+    bumpBoth(mut nums[0], mut nums[1]);
+  } catch (e) {
+    print(e, nums);
+  }
+  try {
+    swap(mut nums[0], mut nums[5]);
+  } catch (e) {
+    print(e, nums);
+  }
+
+  let users = [1, 2, 3];
+  for (mut u of users) {
+    u *= 10;
+  }
+  print(users);
+  let rows = [[1], [2, 3]];
+  for (mut row of rows) {
+    row.push(0);
+    if (row.length > 2) {
+      break;
+    }
+  }
+  print(rows);
+}
+
+function addTag2(mut xs: list<int>): void {
+  xs.push(7);
+}

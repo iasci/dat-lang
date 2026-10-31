@@ -1,0 +1,46 @@
+// Mistakes with `mut` parameters and loop variables.
+
+function addOne(mut xs: list<int>): void {
+  xs.push(1);
+}
+
+function merge(mut a: list<int>, mut b: list<int>): void {
+  a.push(b.length);
+}
+
+function size(xs: list<int>): int {
+  xs.push(0);
+  return xs.length;
+}
+
+function addRow(mut rows: list<list<int>>, mut row: list<int>): void {
+  rows.push(row);
+}
+
+function next(mut i: int): int {
+  i += 1;
+  return i;
+}
+
+function main(): void {
+  let ys = [1];
+  const zs = [2];
+  addOne(ys);
+  addOne(mut zs);
+  merge(mut ys, mut ys);
+  print(size(mut ys));
+  let grid = [[1], [2]];
+  let i = 0;
+  const j = 1;
+  merge(mut grid[i], mut grid[j]);
+  merge(mut grid[0], mut grid[0]);
+  addRow(mut grid, mut grid[1]);
+  merge(mut grid[next(mut i)], mut grid[0]);
+  let users = [1, 2];
+  for (mut u of users) {
+    users.push(u);
+  }
+  for (mut c of "abc") {
+    print(c);
+  }
+}

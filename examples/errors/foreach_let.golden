@@ -1,0 +1,83 @@
+# Golden results for foreach_let.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0603]: closures can't use the `let` variable `total`
+ --> foreach_let.dat:7:5
+7 |     total += item;
+  |     ^^^^^ a closure keeps a copy of what it uses, so it may only use what can't change: use a loop, or `reduce`
+fix: use a `for...of` loop
+6 |   for (const item of items) {
+7 |     total += item;
+8 |   }
+1 error, 1 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0603]: closures can't use the `let` variable `total`
+ --> foreach_let.dat:7:5
+7 |     total += item;
+  |     ^^^^^ a closure keeps a copy of what it uses, so it may only use what can't change: use a loop, or `reduce`
+fix: use a `for...of` loop
+6 |   for (const item of items) {
+7 |     total += item;
+8 |   }
+1 error, 1 fixable with dat fix
+
+=== check --json
+status: 1
+--- stderr
+{
+  "schemaVersion": 1,
+  "diagnostics": [
+    {
+      "code": "E0603",
+      "severity": "error",
+      "message": "closures can't use the `let` variable `total`",
+      "file": "foreach_let.dat",
+      "span": {
+        "byteStart": 176,
+        "byteEnd": 181,
+        "line": 7,
+        "col": 5,
+        "endLine": 7,
+        "endCol": 10
+      },
+      "labels": [
+        {
+          "message": "a closure keeps a copy of what it uses, so it may only use what can't change: use a loop, or `reduce`"
+        }
+      ],
+      "fixes": [
+        {
+          "title": "use a `for...of` loop",
+          "applicability": "safe",
+          "isPreferred": true,
+          "edits": [
+            {
+              "file": "foreach_let.dat",
+              "byteStart": 146,
+              "byteEnd": 196,
+              "before": "items.forEach((item) => {\n    total += item;\n  });",
+              "after": "for (const item of items) {\n    total += item;\n  }"
+            }
+          ]
+        }
+      ],
+      "rendered": "error[E0603]: closures can't use the `let` variable `total`\n --> foreach_let.dat:7:5\n7 |     total += item;\n  |     ^^^^^ a closure keeps a copy of what it uses, so it may only use what can't change: use a loop, or `reduce`\nfix: use a `for...of` loop\n6 |   for (const item of items) {\n7 |     total += item;\n8 |   }\n"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "fixable": 1
+  }
+}
+
+=== run (fixed)
+status: 0
+--- stdout
+6

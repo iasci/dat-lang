@@ -94,6 +94,12 @@ A parameter without a default can't follow one with a default, since no call cou
 function between(low: int = 0, high: int): bool { return low < high; }   // ❌ E0656: `high` needs a default value, because a parameter before it has one
 ```
 
+A `mut` parameter can't have a default: a call that leaves it out has no value of its own for the function to change.
+
+```
+function fill(mut xs: list<int> = []): void { xs.push(1); }   // ❌ E0651: `mut` parameter `xs` can't have a default value
+```
+
 A call needs an argument for each parameter that has no default, and can't pass more arguments than there are parameters:
 
 ```
@@ -135,9 +141,54 @@ print(cart.total);   // 1.5
 Rules:
 
 - The argument must be something that can be modified: a `let` variable, a `mut` parameter, or a field or element of one, such as `addItem(mut order.cart, item)` or `bump(mut counts[0])`.
-- One call can't pass the same value as `mut` twice, including a value and a part of it: `swap(mut a, mut a)` and `merge(mut order, mut order.cart)` are errors. The receiver of a [`mut` method](./08-structs.md#methods) counts as a `mut` argument.
+- One call can't pass the same value as `mut` twice, including a value and a part of it: `swap(mut a, mut a)` and `merge(mut order, mut order.cart)` are errors. Two parts of one value that are visibly different are fine, such as `swap(mut xs[0], mut xs[2])`; see [below](#two-parts-of-one-value). The receiver of a [`mut` method](./08-structs.md#methods) counts as a `mut` argument.
 
 Returning a new value usually reads better. Use `mut` for in-place updates of large values, or when a function updates several things.
+
+A call passes `mut` exactly where the parameter is `mut`:
+
+```
+function addOne(mut xs: list<int>): void {
+  xs.push(1);
+}
+
+function merge(mut into: list<int>, mut from: list<int>): void {
+  into.push(...from);
+  from.clear();
+}
+
+function sum(xs: list<int>): int {
+  return xs.reduce((total, x) => total + x, 0);
+}
+
+let nums = [1, 2];
+let more = [3];
+addOne(nums);              // ❌ E0658: `addOne` changes `xs`, so pass it with `mut`
+                           //    fix: addOne(mut nums);
+print(sum(mut nums));      // ❌ E0659: `sum` doesn't change this argument, so it takes no `mut`
+                           //    fix: print(sum(nums));
+merge(mut nums, mut nums); // ❌ E0657: `nums` is already passed as `mut` to this call
+merge(mut nums, mut more); // ✅
+```
+
+### Two Parts of One Value
+
+One call can pass two parts of one value as `mut` when they're visibly different: different fields, or indexes or keys written as different literals, such as `xs[0]` and `xs[2]` or `groups["a"]` and `groups["b"]`. Parts that may be the same one when the program runs, such as `xs[i]` and `xs[j]`, are an error. The fix passes copies and stores them back after the call, so when `i` and `j` are equal, the last one stored wins:
+
+```
+function swap(mut a: int, mut b: int): void {
+  const t = a;
+  a = b;
+  b = t;
+}
+
+let xs = [1, 2, 3];
+const i = 0;
+const j = 2;
+swap(mut xs[0], mut xs[2]); // ✅
+swap(mut xs[i], mut xs[j]); // ❌ E0657: `xs` is already passed as `mut` to this call
+                            //    fix (review): let a = xs[i]; let b = xs[j]; swap(mut a, mut b); xs[i] = a; xs[j] = b;
+```
 
 ## Arrow Functions
 

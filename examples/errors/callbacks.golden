@@ -1,0 +1,134 @@
+# Golden results for callbacks.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 1
+--- stderr
+error[E0651]: `mut` parameter `xs` can't have a default value
+ --> callbacks.dat:4:15
+4 | function fill(mut xs: list<int> = []): void {
+  |               ^^^^^^^^^^^^^^^^^^^^^^ a call that leaves it out has no value of its own for the function to change
+
+error[E0305]: `x > 1` has no effect
+  --> callbacks.dat:10:28
+10 |   print(xs.filter((x) => { x > 1; }));
+   |                            ^^^^^ `<arrow>` returns a bool, and this is its last statement
+fix (review): return it
+10 |   print(xs.filter((x) => { return x > 1; }));
+
+error[E0252]: this callback returns nothing, and its result is needed
+  --> callbacks.dat:11:16
+11 |   print(xs.map((x) => { return; }));
+   |                ^^^^^^^^^^^^^^^^^^ return a value from it; to only do something for each element, use `forEach` or a loop
+
+error[E0001]: an arrow function's parameters go in parentheses
+  --> callbacks.dat:12:16
+12 |   print(xs.map(x => x * 2));
+   |                ^
+fix: write `(x)`
+12 |   print(xs.map((x) => x * 2));
+
+error[E0851]: list<int> has no method `sorted`
+  --> callbacks.dat:13:12
+13 |   print(xs.sorted(), xs.reversed(), xs.size);
+   |            ^^^^^^
+fix (review): use `toSorted`
+13 |   print(xs.toSorted(), xs.reversed(), xs.size);
+
+error[E0851]: list<int> has no method `reversed`
+  --> callbacks.dat:13:25
+13 |   print(xs.sorted(), xs.reversed(), xs.size);
+   |                         ^^^^^^^^
+fix (review): use `toReversed`
+13 |   print(xs.sorted(), xs.toReversed(), xs.size);
+
+error[E0851]: list<int> has no field `size`
+  --> callbacks.dat:13:40
+13 |   print(xs.sorted(), xs.reversed(), xs.size);
+   |                                        ^^^^ list<int> has `length`
+fix: read `length`
+13 |   print(xs.sorted(), xs.reversed(), xs.length);
+
+error[E0851]: map<string, int> has no field `length`
+  --> callbacks.dat:15:11
+15 |   print(m.length);
+   |           ^^^^^^ map<string, int> has `size`
+fix: read `size`
+15 |   print(m.size);
+
+error[E0350]: `ys.length` can't be changed
+  --> callbacks.dat:17:3
+17 |   ys.length = 0;
+   |   ^^^^^^^^^ the `length` follows from the elements; remove or add elements to change it
+
+error[E0703]: `ys` is in use by the loop
+  --> callbacks.dat:19:10
+19 |     y += ys.length;
+   |          ^^ inside a `for (mut ...)` loop, the list can only be reached through the loop variable
+10 errors, 3 fixable with dat fix
+
+=== run
+status: 2
+--- stderr
+error[E0651]: `mut` parameter `xs` can't have a default value
+ --> callbacks.dat:4:15
+4 | function fill(mut xs: list<int> = []): void {
+  |               ^^^^^^^^^^^^^^^^^^^^^^ a call that leaves it out has no value of its own for the function to change
+
+error[E0305]: `x > 1` has no effect
+  --> callbacks.dat:10:28
+10 |   print(xs.filter((x) => { x > 1; }));
+   |                            ^^^^^ `<arrow>` returns a bool, and this is its last statement
+fix (review): return it
+10 |   print(xs.filter((x) => { return x > 1; }));
+
+error[E0252]: this callback returns nothing, and its result is needed
+  --> callbacks.dat:11:16
+11 |   print(xs.map((x) => { return; }));
+   |                ^^^^^^^^^^^^^^^^^^ return a value from it; to only do something for each element, use `forEach` or a loop
+
+error[E0001]: an arrow function's parameters go in parentheses
+  --> callbacks.dat:12:16
+12 |   print(xs.map(x => x * 2));
+   |                ^
+fix: write `(x)`
+12 |   print(xs.map((x) => x * 2));
+
+error[E0851]: list<int> has no method `sorted`
+  --> callbacks.dat:13:12
+13 |   print(xs.sorted(), xs.reversed(), xs.size);
+   |            ^^^^^^
+fix (review): use `toSorted`
+13 |   print(xs.toSorted(), xs.reversed(), xs.size);
+
+error[E0851]: list<int> has no method `reversed`
+  --> callbacks.dat:13:25
+13 |   print(xs.sorted(), xs.reversed(), xs.size);
+   |                         ^^^^^^^^
+fix (review): use `toReversed`
+13 |   print(xs.sorted(), xs.toReversed(), xs.size);
+
+error[E0851]: list<int> has no field `size`
+  --> callbacks.dat:13:40
+13 |   print(xs.sorted(), xs.reversed(), xs.size);
+   |                                        ^^^^ list<int> has `length`
+fix: read `length`
+13 |   print(xs.sorted(), xs.reversed(), xs.length);
+
+error[E0851]: map<string, int> has no field `length`
+  --> callbacks.dat:15:11
+15 |   print(m.length);
+   |           ^^^^^^ map<string, int> has `size`
+fix: read `size`
+15 |   print(m.size);
+
+error[E0350]: `ys.length` can't be changed
+  --> callbacks.dat:17:3
+17 |   ys.length = 0;
+   |   ^^^^^^^^^ the `length` follows from the elements; remove or add elements to change it
+
+error[E0703]: `ys` is in use by the loop
+  --> callbacks.dat:19:10
+19 |     y += ys.length;
+   |          ^^ inside a `for (mut ...)` loop, the list can only be reached through the loop variable
+10 errors, 3 fixable with dat fix

@@ -27,6 +27,11 @@ pub fn run_on_dat_thread<T: Send>(stack: usize, f: impl FnOnce() -> T + Send) ->
 
 fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
+        // Rust's sort panics when a comparator contradicts itself. dat-rt
+        // catches that panic: in dat it isn't an error.
+        if crate::list::is_sort_order_panic(info.payload()) {
+            return;
+        }
         flush_stdout();
         eprintln!("internal error: {info}");
         eprintln!("This is a bug in dat, not in your program.");
@@ -48,6 +53,7 @@ pub fn run_main(main: Entry, sites: &'static [Site], limit: &'static StackLimit)
     crate::trace::set_sites(sites);
     crate::stack::set_compiled_limit(limit);
     let code = run_on_dat_thread(crate::STACK_SIZE, || {
+        let window = crate::checks::begin();
         let code = match crate::throw::run_entry(main) {
             Ok(()) => 0,
             Err(err) => {
@@ -56,6 +62,8 @@ pub fn run_main(main: Entry, sites: &'static [Site], limit: &'static StackLimit)
             }
         };
         flush_stdout();
+        let code = crate::checks::end(window, code);
+        crate::copies::finish();
         code
     });
     exit_with(code)

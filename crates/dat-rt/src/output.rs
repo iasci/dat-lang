@@ -48,6 +48,11 @@ fn write_out(buf: &mut Vec<u8>) {
     buf.clear();
 }
 
+/// Makes the output buffer now, so the debug checks don't count it.
+pub(crate) fn reserve() {
+    OUT.with_borrow_mut(|o| o.buf.reserve(FLUSH_AT));
+}
+
 pub fn flush_stdout() {
     OUT.with_borrow_mut(|o| write_out(&mut o.buf));
 }

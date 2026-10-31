@@ -79,6 +79,15 @@ for (const person of people) {
 - Taking a value out and putting it back works the same for a struct field: `let tags = user.tags; tags.push(t); user.tags = tags;`. It holds when nothing reads the map or struct between the two steps.
 - Changing a value through a key, field or index (`teams["red"].push("Lin")`, `user.tags.push("admin")`), a `mut` parameter or a `mut` loop variable never copies it either.
 
+`dat run --report-copies` and `dat test --report-copies` list the copies a program made, by where they happened ([§21](./21-command-line.md#copy-report)).
+
+A last use still copies where handing the value over would change what the program does:
+
+- a variable used twice in one call, as in `f(acc, acc)`: the first argument can't take the value the second still reads;
+- inside a `try`, a variable that the `catch` or the code after the `try` can read, at an operation that can throw: the error may come after the value was handed over;
+- a variable that a closure captured, until the closure's last use;
+- a value that another copy still shares, such as one taken out of a list that's still used.
+
 ### Changing a Value in Place
 
 To let a function change the caller's value, mark the parameter `mut` and pass the argument with `mut`. See [`mut` parameters](./06-functions.md#mut-parameters).
@@ -110,6 +119,15 @@ let tags = user.tags;
 tags.push("admin");   // ❌ E0202: `tags` is modified but never used afterwards.
                       //    It is a copy of `user.tags`; modify `user.tags` directly.
                       //    fix (review): user.tags.push("admin");
+```
+
+The same goes for an element of a list:
+
+```
+let grid = [[1, 2], [3]];
+let row = grid[0];
+row.push(9);          // ❌ E0202: `row` is modified but never used afterwards
+                      //    fix (review): grid[0].push(9);
 ```
 
 If a `let` variable starts as a copy of another variable, a field or an element, is modified, and is never read afterwards, the compiler reports an error, so this mistake can't pass silently. Write `user.tags.push("admin");` instead, or assign the copy back with `user.tags = tags;`. The same check catches `for (let user of users) { user.active = true; }`, where the fix is a [`mut` loop variable](./07-control-flow.md#mut-loop-variables).

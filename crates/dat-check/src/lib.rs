@@ -16,8 +16,10 @@ use dat_diag::{Diagnostic, FileId, SourceFile, SourceMap};
 
 pub use module::check;
 
-/// A type as the checker sees it. `Poison` marks an expression that already
-/// has an error; it absorbs every check so the error is reported once.
+/// A type as the checker sees it: an IR type, or `Poison` for an
+/// expression that already has an error, which absorbs every check so the
+/// error is reported once. A compound type never holds `Poison`: a list of
+/// poison is poison.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Ty {
     Int,
@@ -27,29 +29,12 @@ pub(crate) enum Ty {
     Void,
     Never,
     Error(dat_ir::ErrorType),
+    /// A list, set, map, tuple or function type, from the module's table.
+    Of(dat_ir::TypeId),
     Poison,
 }
 
 impl Ty {
-    pub(crate) fn name(self) -> &'static str {
-        match self {
-            Ty::Int => "int",
-            Ty::Float => "float",
-            Ty::Bool => "bool",
-            Ty::Str => "string",
-            Ty::Void => "void",
-            Ty::Never => "never",
-            Ty::Error(e) => e.name(),
-            Ty::Poison => "{unknown}",
-        }
-    }
-
-    /// The type with its article, for messages: "an int", "a string".
-    pub(crate) fn a_name(self) -> String {
-        let name = self.name();
-        if name.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) { format!("an {name}") } else { format!("a {name}") }
-    }
-
     pub(crate) fn ir(self) -> dat_ir::Type {
         match self {
             Ty::Int => dat_ir::Type::Int,
@@ -59,12 +44,26 @@ impl Ty {
             Ty::Void | Ty::Poison => dat_ir::Type::Void,
             Ty::Never => dat_ir::Type::Never,
             Ty::Error(e) => dat_ir::Type::Error(e),
+            Ty::Of(id) => dat_ir::Type::Of(id),
+        }
+    }
+
+    pub(crate) fn of(t: dat_ir::Type) -> Ty {
+        match t {
+            dat_ir::Type::Int => Ty::Int,
+            dat_ir::Type::Float => Ty::Float,
+            dat_ir::Type::Bool => Ty::Bool,
+            dat_ir::Type::Str => Ty::Str,
+            dat_ir::Type::Void => Ty::Void,
+            dat_ir::Type::Never => Ty::Never,
+            dat_ir::Type::Error(e) => Ty::Error(e),
+            dat_ir::Type::Of(id) => Ty::Of(id),
         }
     }
 
     /// Has a `toString()` that templates and `print` can use.
     pub(crate) fn is_printable(self) -> bool {
-        matches!(self, Ty::Int | Ty::Float | Ty::Bool | Ty::Str | Ty::Error(_))
+        !matches!(self, Ty::Void | Ty::Never | Ty::Poison)
     }
 
     pub(crate) fn is_number(self) -> bool {

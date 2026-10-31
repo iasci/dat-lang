@@ -1,0 +1,27 @@
+# Golden results for sets_maps.dat. `dat-conformance examples --bless` rewrites this file.
+# `run` and `test` sections must match on the interpreter and compiled.
+
+=== check
+status: 0
+
+=== run
+status: 0
+--- stdout
+{"go", "rust", "python", "zig"} 4 true false
+true false {"go", "rust", "zig"}
+{"go", "rust", "zig", "python"}
+{"rust", "zig"} {"go", "python"} {"go", "rust", "zig", "python", "c"} {"go", "python", "c"}
+true true true
+true ["go", "rust", "zig", "python"] true
+{3, 1, 2} [{3, 1, 2}]
+{"alice": 10, "bob": 20, "charlie": 30} 10 0 true false
+{"alice": 10, "bob": 25, "charlie": 30, "dave": 40} 4
+true false {"alice": 10, "charlie": 30, "dave": 40}
+["alice", "charlie", "dave", "bob"] [10, 30, 40, 5] [["alice", 10], ["charlie", 30], ["dave", 40], ["bob", 5]]
+true false
+{1: "one", 2: "two"} {"a": 1, "b": 3, "x": 9} {"content-type": "text/html"}
+{"red": ["Ada", "Lin"]}
+KeyError: key "nobody" not found
+KeyError: key "green" not found
+{} {}
+{"the": 3, "cat": 1, "and": 2, "hat": 1, "bat": 1}

@@ -1,9 +1,33 @@
 # Hidden setup for spec blocks that use names they don't declare.
 # Each line is `<block id> <statement>`; a block's statements start its generated main.
-# The block id is the spec file and the line of the block's opening fence, so
-# editing the spec above a block makes its prelude stale, loudly.
-03-operators.md:43 const name = "Ada";
-03-operators.md:22 const low = 2;
-03-operators.md:22 const high = 9;
-07-control-flow.md:7 const x = 5;
-07-control-flow.md:24 const x = 5;
+# The block id is the spec file and a hash of the block's text
+# (`dat-conformance spec --keys` lists them), so editing the block
+# drops its prelude, loudly, and editing elsewhere doesn't.
+03-operators.md~fb247a5e const name = "Ada";
+03-operators.md~b9b2cfcb const low = 2;
+03-operators.md~b9b2cfcb const high = 9;
+07-control-flow.md~968b487b const x = 5;
+07-control-flow.md~0f99a851 const x = 5;
+03-operators.md~60a43c50 const env = { PORT: "8080" };
+03-operators.md~60a43c50 const roles = ["admin"];
+07-control-flow.md~968b487b const items = [1];
+07-control-flow.md~5cde79db const tags: set<string> = ["go", "rust"];
+07-control-flow.md~5cde79db const scores = { ada: 10, lin: 20 };
+07-control-flow.md~5cde79db const names = ["Ada", "Lin"];
+09-builtin-functions.md~b53a1e3e const items = [1];
+09-builtin-functions.md~b53a1e3e const total = 100;
+11-set-methods.md~bd733821 const frontend = ["css", "html"];
+11-set-methods.md~bd733821 const backend = ["go", "sql"];
+11-set-methods.md~bd733821 const ids = [3, 1, 3];
+11-set-methods.md~c6a4e42d const tags: set<string> = ["go", "rust"];
+16-map-methods.md~cdf569f4 const key = "id";
+16-map-methods.md~cdf569f4 const value = "42";
+16-map-methods.md~cdf569f4 const defaults = { theme: "dark", lang: "en" };
+16-map-methods.md~cdf569f4 const overrides = { lang: "fr" };
+16-map-methods.md~4ed37277 const scores = { ada: 10, lin: 20 };
+16-map-methods.md~8ab7510b const text = "a b a";
+07-control-flow.md~958e9088 const isValid = () => true;
+07-control-flow.md~958e9088 const process = () => true;
+07-control-flow.md~958e9088 const isReady = () => false;
+07-control-flow.md~958e9088 const initialize = () => true;
+07-control-flow.md~31226faf const connected = () => false;

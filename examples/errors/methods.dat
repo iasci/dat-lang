@@ -3,7 +3,7 @@
 function main(): void {
   const s = "text";
   print(s.toUppercase(), s.length(), s.size, 5.foo());
-  print(s.split(","), "8080".toInt(), s.trim);
+  print(s.split(1), "8080".toInt(), s.trim);
   print("a".repeat("3"), "a".slice(), "a".padStart(1, 2, 3), 7.pow(2.5));
   print(5[0], int.MAX);
   s[0] = "T";

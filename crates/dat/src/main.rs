@@ -6,6 +6,21 @@ use dat_check::{Compiled, Options};
 use dat_diag::{Diagnostic, SourceMap};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Mutex;
+
+/// Settings for measuring how agents use dat (the agent benchmark pilot),
+/// which nobody else needs, so they're environment variables, not options:
+///
+/// - `DAT_NO_FIXES=1` drops every fix from diagnostics, in text and JSON,
+///   so `dat fix` changes nothing.
+/// - `DAT_LOG=<file>` appends one JSON line per run: its arguments, its
+///   exit status and its full diagnostic record.
+fn no_fixes() -> bool {
+    std::env::var_os("DAT_NO_FIXES").is_some_and(|v| v == "1")
+}
+
+/// The JSON diagnostic record of this run, for `DAT_LOG`.
+static RECORD: Mutex<Option<String>> = Mutex::new(None);
 
 const USAGE: &str = "\
 usage: dat <command> [options] [path]
@@ -20,10 +35,13 @@ commands:
   rust <file>        print the generated Rust
 
 options:
+  --version          print the version and the commit it was built from
   --compiled         (run, test) compile to Rust and run that instead of the interpreter
   --json             print diagnostics as JSON
   --filter <text>    (test) run only the tests whose name contains text
   --verbose          (test) also list each test that passes
+  --report-copies    (run, test) count the copies made because a changed value
+                     was still shared, by where they happened; print them at the end
   -o <path>          (build) where to write the executable
 ";
 
@@ -31,6 +49,7 @@ struct Args {
     command: String,
     paths: Vec<String>,
     compiled: bool,
+    report_copies: bool,
     json: bool,
     verbose: bool,
     filter: Option<String>,
@@ -44,10 +63,16 @@ fn parse_args() -> Result<Args, String> {
         print!("{USAGE}");
         std::process::exit(0);
     }
-    let mut a = Args { command, paths: Vec::new(), compiled: false, json: false, verbose: false, filter: None, output: None };
+    if command == "--version" || command == "-V" {
+        println!("dat {} ({})", env!("CARGO_PKG_VERSION"), env!("DAT_COMMIT"));
+        std::process::exit(0);
+    }
+    let mut a =
+        Args { command, paths: Vec::new(), compiled: false, report_copies: false, json: false, verbose: false, filter: None, output: None };
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--compiled" => a.compiled = true,
+            "--report-copies" => a.report_copies = true,
             "--json" => a.json = true,
             "--verbose" => a.verbose = true,
             "--filter" => a.filter = Some(it.next().ok_or("--filter needs a value")?),
@@ -92,7 +117,27 @@ fn run_cli() -> ExitCode {
             2
         }
     };
+    if let Some(path) = std::env::var_os("DAT_LOG") {
+        log_run(Path::new(&path), code);
+    }
     ExitCode::from(code as u8)
+}
+
+/// Appends this run to the `DAT_LOG` file as one JSON line.
+fn log_run(path: &Path, status: i32) {
+    use std::io::Write;
+    let args: Vec<String> = std::env::args().skip(1).map(|a| dat_diag::json_string(&a)).collect();
+    let record = RECORD.lock().map(|r| r.clone()).unwrap_or_default();
+    // The record is pretty JSON; its line breaks are only between tokens.
+    let record = record.map_or("null".to_string(), |r| r.replace('\n', ""));
+    let line = format!(
+        "{{\"version\": {}, \"args\": [{}], \"status\": {status}, \"record\": {record}}}\n",
+        dat_diag::json_string(env!("DAT_COMMIT")),
+        args.join(", ")
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = f.write_all(line.as_bytes());
+    }
 }
 
 /// The `.dat` files a path names: the file itself, or every `.dat` file under a folder.
@@ -156,7 +201,31 @@ fn compile_all(files: &[String], opts: Options) -> Result<(SourceMap, Vec<Compil
                 return Err(2);
             }
         };
-        out.push(dat_check::compile(&mut sources, f, text, opts));
+        let mut c = dat_check::compile(&mut sources, f, text, opts);
+        if no_fixes() {
+            c.diags.iter_mut().for_each(|d| d.fixes.clear());
+        }
+        // The debug checks' static half: the liveness pass's marks never
+        // use a value after it was moved.
+        if dat_rt::checks::enabled()
+            && let Some(p) = &c.program
+        {
+            let problems = dat_own::verify(p);
+            if !problems.is_empty() {
+                for m in problems {
+                    eprintln!("internal error: {f}: {m}");
+                }
+                eprintln!("This is a bug in dat, not in your program.");
+                return Err(2);
+            }
+        }
+        out.push(c);
+    }
+    if std::env::var_os("DAT_LOG").is_some() {
+        let diags = all_diags(&out);
+        if let Ok(mut r) = RECORD.lock() {
+            *r = Some(dat_diag::render_json(&sources, &diags));
+        }
     }
     Ok((sources, out))
 }
@@ -212,13 +281,16 @@ fn cmd_run(args: &Args) -> i32 {
         Err(code) => return code,
     };
     if args.compiled {
-        return match dat_codegen::build::run_compiled(&[&program], dat_codegen::build::Mode::Run) {
+        return match dat_codegen::build::run_compiled(&[&program], dat_codegen::build::Mode::Run, args.report_copies) {
             Ok(code) => code,
             Err(e) => {
                 eprintln!("dat: {e}");
                 2
             }
         };
+    }
+    if args.report_copies {
+        dat_rt::copies::start();
     }
     dat_interp::run_main(&program)
 }
@@ -253,13 +325,16 @@ fn cmd_test(args: &Args) -> i32 {
     }
     if args.compiled {
         let mode = dat_codegen::build::Mode::Test { filter: args.filter.clone(), verbose: args.verbose };
-        return match dat_codegen::build::run_compiled(&refs, mode) {
+        return match dat_codegen::build::run_compiled(&refs, mode, args.report_copies) {
             Ok(code) => code,
             Err(e) => {
                 eprintln!("dat: {e}");
                 2
             }
         };
+    }
+    if args.report_copies {
+        dat_rt::copies::start();
     }
     dat_interp::run_tests(&refs, filter, args.verbose)
 }
@@ -347,7 +422,7 @@ fn cmd_rust(args: &Args) -> i32 {
         // Neither: report the missing `main` as `dat run` does.
         (None, true) => return compile_program_opts(args, Options { require_main: true }).err().unwrap_or(1),
     };
-    print!("{}", dat_codegen::emit_crate(&[&p], &entry));
+    print!("{}", dat_codegen::emit_crate(&[&p], &entry, false));
     0
 }
 
